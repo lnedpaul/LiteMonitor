@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <PlatformTarget>x64</PlatformTarget>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -11,7 +11,7 @@
   <ItemGroup>
     <Compile Include="回归程序.cs.txt" />
     <Reference Include="LiteMonitor">
-      <HintPath>../../bin/Release/net8.0-windows/LiteMonitor.dll</HintPath>
+      <HintPath>../../bin/Release/net10.0-windows/LiteMonitor.dll</HintPath>
     </Reference>
     <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
     <PackageReference Include="System.Text.Json" Version="9.0.10" />

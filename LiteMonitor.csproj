@@ -1,11 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- .NET 9+ 新增 WFO1000（默认 Error）：要求 Control 派生类的公开属性显式声明设计器序列化方式。
+         本项目全部窗体/控件为纯代码自绘，不使用 WinForms 设计器，该规则无实际风险；
+         按微软官方建议抑制，避免为 14 个属性加无意义特性。二期可评估逐个补 DesignerSerializationVisibility。 -->
+    <NoWarn>$(NoWarn);WFO1000</NoWarn>
     <PlatformTarget>x64</PlatformTarget>
     <ApplicationIcon>resources\assets\app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -20,7 +24,7 @@
 
 	<ItemGroup>
     <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
-    <PackageReference Include="System.Text.Json" Version="9.0.10" />
+    <!-- .NET 10 已内置 System.Text.Json 10.0.x；显式引用 9.0.10 会触发 NU1510 并可能降级程序集 -->
   </ItemGroup>
 
     <!-- 自动复制 themes 与 lang 目录下的所有文件 -->
@@ -44,7 +48,8 @@
 		<Content Include="resources\LiteMonitor.Updater.exe">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</Content>
-    <Content Include="使用说明(必读).txt">
+    <!-- 上游仓库未提交该文件；加 Exists 条件避免 MSB3030，文件补齐后自动恢复复制 -->
+    <Content Include="使用说明(必读).txt" Condition="Exists('使用说明(必读).txt')">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</Content>
 	</ItemGroup>
