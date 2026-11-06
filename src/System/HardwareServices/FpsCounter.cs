@@ -351,10 +351,17 @@ namespace LiteMonitor.src.SystemServices
                 {
                     try
                     {
-                        while (!_presentMonProc.StandardOutput.EndOfStream)
+                        // CA2024：async 方法里访问 EndOfStream 会触发同步阻塞读取，可能挂住读取循环。
+                        // ReadLineAsync 返回 null 即代表 stdout 已关闭；同时先捕获局部引用，
+                        // 避免其它线程重置 _presentMonProc 后本循环出现空引用。
+                        var proc = _presentMonProc;
+                        if (proc == null) return;
+                        var stdout = proc.StandardOutput;
+                        while (true)
                         {
-                            string? line = await _presentMonProc.StandardOutput.ReadLineAsync();
-                            if (!string.IsNullOrWhiteSpace(line)) 
+                            string? line = await stdout.ReadLineAsync();
+                            if (line == null) break;
+                            if (!string.IsNullOrWhiteSpace(line))
                             {
                                 // 解析输出数据
                                 ParseLine(line);

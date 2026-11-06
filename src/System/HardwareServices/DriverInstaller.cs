@@ -665,7 +665,8 @@ namespace LiteMonitor.src.SystemServices
                 using var fs = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                 if (fs.Length < 64) return false;
                 var buffer = new byte[2];
-                fs.Read(buffer, 0, 2);
+                // CA2022：Read 允许短读，必须校验实际读取字节数再判断 PE 头
+                if (fs.Read(buffer, 0, 2) != 2) return false;
                 return buffer[0] == 0x4D && buffer[1] == 0x5A;
             }
             catch { return false; }

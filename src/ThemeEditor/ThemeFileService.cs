@@ -16,6 +16,14 @@ namespace LiteMonitor.ThemeEditor
         /// </summary>
         private static string Dir => ThemeManager.ThemeDir;
 
+        // .NET 10 (CA1869)：复用只读实例，实例首次使用后由运行时冻结且线程安全
+        private static readonly JsonSerializerOptions _readOptions = new()
+        {
+            PropertyNameCaseInsensitive = true,
+            AllowTrailingCommas = true
+        };
+        private static readonly JsonSerializerOptions _writeOptions = new() { WriteIndented = true };
+
         /// <summary>
         /// 列出所有主题文件
         /// </summary>
@@ -45,11 +53,7 @@ namespace LiteMonitor.ThemeEditor
 
             string json = File.ReadAllText(path);
 
-            var theme = JsonSerializer.Deserialize<Theme>(json, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true,
-                AllowTrailingCommas = true,
-            });
+            var theme = JsonSerializer.Deserialize<Theme>(json, _readOptions);
 
             if (theme == null)
                 throw new Exception($"Failed to parse theme JSON: {name}");
@@ -65,10 +69,7 @@ namespace LiteMonitor.ThemeEditor
         public static void SaveTheme(string name, Theme theme)
         {
             string path = Path.Combine(Dir, name + ".json");
-            string json = JsonSerializer.Serialize(theme, new JsonSerializerOptions
-            {
-                WriteIndented = true
-            });
+            string json = JsonSerializer.Serialize(theme, _writeOptions);
 
             SafeWrite(path, json);
         }

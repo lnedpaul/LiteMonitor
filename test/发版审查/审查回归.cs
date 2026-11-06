@@ -243,7 +243,8 @@ internal static class Program
         request.CertificateExtensions.Add(names.Build());
         using var generated = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
         // Windows 的 TLS 服务端需要导入带私钥的证书；仅导入内存对象，不加入信任存储。
-        using var certificate = new X509Certificate2(generated.Export(X509ContentType.Pfx));
+        // SYSLIB0057：.NET 9+ 弃用 X509Certificate2(byte[])，改用 X509CertificateLoader
+        using var certificate = X509CertificateLoader.LoadCertificate(generated.Export(X509ContentType.Pfx));
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;

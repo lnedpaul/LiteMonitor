@@ -15,6 +15,14 @@ namespace LiteMonitor
         private static readonly string _backupPath = Path.Combine(AppContext.BaseDirectory, "settings.json.bak");
         private static readonly string _tempPath = Path.Combine(AppContext.BaseDirectory, "settings.json.tmp");
         private static readonly object _ioLock = new object();
+
+        // .NET 10 (CA1869)：每次 new JsonSerializerOptions 都会丢弃序列化元数据缓存。
+        // 实例首次用于序列化后由运行时冻结，后续只读复用是线程安全的。
+        private static readonly JsonSerializerOptions _writeOptions = new() { WriteIndented = true };
+        private static readonly JsonSerializerOptions _readOptions = new()
+        {
+            PropertyNameCaseInsensitive = true
+        };
         public static string FilePath => _cachedPath;
 
         // Global block save lock
@@ -82,7 +90,7 @@ namespace LiteMonitor
 
             try
             {
-                var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
+                var json = JsonSerializer.Serialize(settings, _writeOptions);
                 lock (_ioLock)
                 {
                     AtomicWrite(json);
@@ -111,10 +119,7 @@ namespace LiteMonitor
                 if (!File.Exists(path)) return null;
 
                 var json = File.ReadAllText(path);
-                return JsonSerializer.Deserialize<Settings>(json, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
+                return JsonSerializer.Deserialize<Settings>(json, _readOptions);
             }
             catch
             {

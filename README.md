@@ -170,6 +170,23 @@ dotnet build -c Release
 /bin/Release/net10.0-windows/LiteMonitor.exe
 ```
 
+### 发布（顺序不可颠倒）
+
+`resources/LiteMonitor.Updater.exe` 是主程序运行时拉起的自动更新器，**必须与主程序同为 .NET 10**。
+直接 `dotnet build` 或 `dotnet publish LiteMonitor.csproj` 只会复制仓库里现成的更新器；
+若它是旧版（.NET 8）二进制，会打出「新主程序 + 旧更新器」的混合包，自动更新链路会静默失效。
+
+```powershell
+.\build-net10.ps1
+```
+
+脚本依次执行：① 发布自包含单文件更新器 → ② 覆盖 `resources\LiteMonitor.Updater.exe` → ③ 发布主程序，
+并校验最终产物里的更新器与 ① 的哈希一致；结果输出到 `dist\publish\app`。
+使用便携 SDK 时：`.\build-net10.ps1 -DotNet "F:\path\to\dotnet.exe"`。
+
+> 主程序为**框架依赖发布**，目标机器需安装 .NET 10 Desktop Runtime；
+> 更新器为**自包含单文件**（约 71 MB），不依赖运行时。
+
 ---
 
 ## 📄 开源协议

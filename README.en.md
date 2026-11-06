@@ -170,6 +170,23 @@ Output:
 /bin/Release/net10.0-windows/LiteMonitor.exe
 ```
 
+### Publish (order matters)
+
+`resources/LiteMonitor.Updater.exe` is launched by the app for auto-update and **must target the same
+runtime**. A plain `dotnet build` / `dotnet publish LiteMonitor.csproj` only copies whatever updater binary
+is in the repo; an old (.NET 8) one silently produces a mixed package with a broken update path.
+
+```powershell
+.\build-net10.ps1
+```
+
+The script publishes the self-contained updater, overwrites `resources\LiteMonitor.Updater.exe`,
+publishes the app, and verifies the shipped updater hash matches the freshly built one.
+Output: `dist\publish\app`. For a portable SDK: `.\build-net10.ps1 -DotNet "F:\path\to\dotnet.exe"`.
+
+> The app is **framework-dependent** (requires .NET 10 Desktop Runtime on the target machine);
+> the updater is a **self-contained single file** (~71 MB) and needs no runtime.
+
 ---
 
 ## 📄 License

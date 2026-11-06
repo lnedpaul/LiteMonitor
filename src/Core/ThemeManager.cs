@@ -214,7 +214,14 @@ namespace LiteMonitor.src.Core
         // ★★★ 修改：移除 _stringPool，只保留 _colorCache ★★★
         // private static readonly Dictionary<string, string> _stringPool ... (删除)
         private static readonly Dictionary<string, Color> _colorCache = new(32);
-        private static readonly object _lock = new object(); 
+        private static readonly object _lock = new object();
+        // .NET 10 (CA1869)：主题加载复用只读实例，避免每次换主题重建序列化元数据缓存
+        private static readonly JsonSerializerOptions _readOptions = new()
+        {
+            PropertyNameCaseInsensitive = true,
+            IgnoreReadOnlyProperties = true,
+            AllowTrailingCommas = true
+        };
 
         public static string ThemeDir
         {
@@ -256,12 +263,7 @@ namespace LiteMonitor.src.Core
                     throw new FileNotFoundException("Theme json not found", path);
 
                 var json = File.ReadAllText(path);
-                var theme = JsonSerializer.Deserialize<Theme>(json, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true,
-                    IgnoreReadOnlyProperties = true,
-                    AllowTrailingCommas = true
-                });
+                var theme = JsonSerializer.Deserialize<Theme>(json, _readOptions);
 
                 if (theme == null)
                     throw new Exception("Theme parse failed.");

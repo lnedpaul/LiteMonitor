@@ -28,6 +28,8 @@ namespace LiteMonitor.src.Core
         private static readonly string _tempPath = Path.Combine(AppContext.BaseDirectory, "TrafficHistory.json.tmp");
         private static readonly object _ioLock = new object(); // 文件锁
         private static readonly object _dataLock = new object(); // 数据锁
+        // .NET 10 (CA1869)：复用只读实例，避免每次自动保存都重建序列化元数据缓存
+        private static readonly JsonSerializerOptions _writeOptions = new() { WriteIndented = true };
         // ====== 新增缓存字段 ======
         private static DateTime _cachedDate;
         private static string _cachedDateKey = "";
@@ -110,10 +112,9 @@ namespace LiteMonitor.src.Core
 
         private static string SerializeSnapshot()
         {
-            var opt = new JsonSerializerOptions { WriteIndented = true };
             lock (_dataLock)
             {
-                return JsonSerializer.Serialize(CloneDataUnsafe(), opt);
+                return JsonSerializer.Serialize(CloneDataUnsafe(), _writeOptions);
             }
         }
 
