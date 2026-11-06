@@ -172,30 +172,49 @@ Output:
 
 ### Publish (single file, order matters)
 
-The default deliverable is a **self-contained single-file** `LiteMonitor.exe`: the .NET 10 Desktop
-runtime, all managed/native dependencies, default themes / languages / plugins and the auto-updater
-are bundled into one exe. **No .NET runtime is required** on the target machine — copy one file and run.
+Two shapes are available; the default matches upstream — **framework-dependent single file**:
+
+| Shape | Command | exe size | Ship zip | Target machine |
+| --- | --- | --- | --- | --- |
+| Framework-dependent (default) | `.\build-net10.ps1` | ~5.8 MB | ~2.4 MB | needs .NET 10 Desktop Runtime |
+| Self-contained (optional) | `.\build-net10.ps1 -SelfContained` | ~82 MB | — | no runtime needed |
+
+The upstream v1.3.6 package is ~2.8 MB because it uses a framework-dependent single-file exe
+plus a framework-dependent updater (~166 KB), packed into a zip. This branch aligns with that
+approach by default. Both shapes are still genuinely single-file: default themes / languages /
+plugins and the updater are embedded into the exe as `EmbeddedResource`.
 
 ```powershell
-.\build-net10.ps1
+.\build-net10.ps1                    # default: small build
+.\build-net10.ps1 -SelfContained     # optional: runtime-free self-contained build
 ```
 
 The script:
 
-1. Publishes the self-contained updater and overwrites `resources\LiteMonitor.Updater.exe`
-   (build-time artifact, no longer committed to the repo);
-2. Publishes the app with `PublishSingleFile=true`, embedding the `resources` payload as
-   `EmbeddedResource`;
+1. Publishes the single-file updater (framework-dependent by default, ~170 KB) and overwrites
+   `resources\LiteMonitor.Updater.exe` (build-time artifact, no longer committed to the repo);
+2. Publishes the app with `PublishSingleFile=true`, embedding the `resources` payload;
 3. Verifies the publish output contains only one exe, that resources were not copied as external
-   content, records SHA256 hashes, and removes intermediate folders.
+   content, records SHA256 hashes, and removes intermediate folders;
+4. For the framework-dependent shape, also produces a ship zip containing only the exe
+   (never `settings.json` or other user data).
 
-Output: `dist\LiteMonitor-single\LiteMonitor.exe` (~82 MB: self-contained .NET 10 Desktop
-runtime plus the 71 MB updater).
+Default output: `dist\LiteMonitor-single\LiteMonitor.exe` (6,127,386 B / 5.84 MB) and
+`LiteMonitor-net10-win-x64.zip` (2,503,835 B / 2.39 MB).
 For a portable SDK: `.\build-net10.ps1 -DotNet "F:\path\to\dotnet.exe"`.
 
-Build checksum: SHA256 `C0F2FB2BF1B8D9BD208F25D145D5A7E66A62A46DC09782947B5CC73B1B63FEE6`;
-embedded updater SHA256 `71317FA26F7033B8B77E1CAE79CC43428D81BD2458191AFCA441B6D0DF9A3F1E8`.
+Build checksums:
 
+- Framework-dependent exe SHA256 `DE8D8570C6145F25E188824A597C5A17632B7ADC61F4B0257A7DDCF1CD9CAB91`
+- Ship zip SHA256 `FCA4027CD36FAB918FFC0C326FC5250051BC91E6D9FE46480C2E20934FB441E8`
+- Embedded updater SHA256 `378E6A15B966660BE47111E4D52A05E3F67BAB80FDF7541DA26297B4027B0CC6`
+- Self-contained exe SHA256 `C0F2FB2BF1B8D9BD208F25D145D5A7E66A62A46DC09782947B5CC73B1B63FEE6`
+
+> **Trade-off**: the framework-dependent build needs .NET 10 Desktop Runtime on the target
+> machine (this SDK ships 10.0.14); the self-contained build bundles the runtime and runs on
+> any Win10/11 x64 at the cost of ~82 MB. `EnableCompressionInSingleFile` works only for
+> self-contained publishing (framework-dependent raises NETSDK1176), so the script toggles it.
+>
 > **First run**: the exe recreates a `resources\` folder next to itself (themes / languages /
 > plugins / updater) and then reads and writes `settings.json` in the same folder as before.
 > Existing files are never overwritten, so custom themes and updated updaters are preserved.

@@ -6,8 +6,11 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 
-		<!-- Updater 应该是一个完全独立可执行程序 -->
-		<SelfContained>true</SelfContained>
+		<!-- 默认框架依赖单文件：与主程序共用目标机器上的 .NET 10 运行时，
+		     体积仅百 KB 级，对齐上游发布包约 3 MB 的思路。
+		     需要完全独立可执行时，由 build-net10.ps1 的 SelfContained 开关
+		     以命令行属性覆盖本值。 -->
+		<SelfContained>false</SelfContained>
 		<PublishSingleFile>true</PublishSingleFile>
 		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<PublishTrimmed>false</PublishTrimmed>

@@ -172,28 +172,45 @@ dotnet build -c Release
 
 ### 发布（单文件版，顺序不可颠倒）
 
-默认交付形态是**自包含单文件** `LiteMonitor.exe`：.NET 10 桌面运行时、全部托管 / 原生依赖、
-默认主题 / 语言 / 插件配置，以及自动更新器，都打进同一个 exe，
-目标机器**无需安装 .NET 运行时**，拷贝单个文件即可使用。
+提供两种形态，默认与上游一致走**框架依赖单文件**：
+
+| 形态 | 命令 | exe 体积 | 分发 zip | 目标机器 |
+| --- | --- | --- | --- | --- |
+| 框架依赖（默认） | `.\build-net10.ps1` | 约 5.8 MB | 约 2.4 MB | 需已装 .NET 10 桌面运行时 |
+| 自包含（可选） | `.\build-net10.ps1 -SelfContained` | 约 82 MB | — | 免装运行时 |
+
+上游 v1.3.6 的发布包约 2.8 MB，用的就是「框架依赖单文件 + 框架依赖更新器（约 166 KB）+ 打成 zip」
+这套组合；本分支默认形态与之对齐。两种形态都仍是真正的单文件：默认主题 / 语言 / 插件配置
+与更新器都作为 `EmbeddedResource` 内嵌在 exe 里。
 
 ```powershell
-.\build-net10.ps1
+.\build-net10.ps1                    # 默认：小体积版
+.\build-net10.ps1 -SelfContained     # 可选：免运行时的自包含版
 ```
 
 脚本依次执行：
 
-1. 发布自包含单文件更新器 → 覆盖 `resources\LiteMonitor.Updater.exe`；
-   （更新器由构建期生成，已不再入库，避免仓库塞入 71 MB 二进制）
-2. 以 `PublishSingleFile=true` 发布主程序，把 `resources` 下的配置与更新器作为
-   `EmbeddedResource` 嵌入 exe；
-3. 自检输出目录只剩一个 exe、确认资源没有被复制成外部文件、记录 SHA256，并清理中间目录。
+1. 发布单文件更新器（默认框架依赖，约 170 KB）→ 覆盖 `resources\LiteMonitor.Updater.exe`；
+   （更新器由构建期生成，已不再入库）
+2. 以 `PublishSingleFile=true` 发布主程序，把 `resources` 下的配置与更新器嵌入 exe；
+3. 自检输出目录只剩一个 exe、确认资源没有被复制成外部文件、记录 SHA256，并清理中间目录；
+4. 框架依赖版额外产出只含 exe 的分发 zip（不会把 `settings.json` 等用户数据打进去）。
 
-结果：`dist\LiteMonitor-single\LiteMonitor.exe`（约 82 MB，自包含 .NET 10 桌面运行时 + 71 MB 更新器）。
+默认产物：`dist\LiteMonitor-single\LiteMonitor.exe`（6,127,386 B / 5.84 MB）
+与 `LiteMonitor-net10-win-x64.zip`（2,503,835 B / 2.39 MB）。
 使用便携 SDK 时：`.\build-net10.ps1 -DotNet "F:\path\to\dotnet.exe"`。
 
-本次构建的校验值：SHA256 `C0F2FB2BF1B8D9BD208F25D145D5A7E66A62A46DC09782947B5CC73B1B63FEE6`；
-内嵌更新器 SHA256 `71317FA26F7033B8B77E1CAE79CC43428D81BD2458191AFCA441B6D0DF9A3F1E8`。
+本次构建的校验值：
 
+- 框架依赖版 exe SHA256 `DE8D8570C6145F25E188824A597C5A17632B7ADC61F4B0257A7DDCF1CD9CAB91`
+- 分发 zip SHA256 `FCA4027CD36FAB918FFC0C326FC5250051BC91E6D9FE46480C2E20934FB441E8`
+- 内嵌更新器 SHA256 `378E6A15B966660BE47111E4D52A05E3F67BAB80FDF7541DA26297B4027B0CC6`
+- 自包含版 exe SHA256 `C0F2FB2BF1B8D9BD208F25D145D5A7E66A62A46DC09782947B5CC73B1B63FEE6`
+
+> **取舍**：框架依赖版要求目标机器装有 .NET 10 桌面运行时（本机 SDK 自带 10.0.14）；
+> 自包含版把运行时一起打进 exe，可拷到任意 Win10/11 x64，代价是约 82 MB。
+> `EnableCompressionInSingleFile` 只对自包含发布有效（框架依赖会报 NETSDK1176），脚本已按形态自动开关。
+>
 > **首次运行**：程序会在 exe 所在目录自动生成 `resources\` 子目录（主题 / 语言 / 插件 / 更新器），
 > 之后照常读写同目录下的 `settings.json` 等数据文件。已存在的文件不会被覆盖，
 > 用户自定义主题、语言、插件与更新过的更新器都会保留。
