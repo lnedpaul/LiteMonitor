@@ -27,8 +27,23 @@
     <!-- .NET 10 已内置 System.Text.Json 10.0.x；显式引用 9.0.10 会触发 NU1510 并可能降级程序集 -->
   </ItemGroup>
 
-    <!-- 自动复制 themes 与 lang 目录下的所有文件 -->
-    <ItemGroup>
+    <!-- ==================================================================
+         资源处理分两种发布形态（由 build-net10.ps1 传入 PublishSingleFile 决定）：
+
+         A) 常规构建 / 多文件发布：资源作为 Content 复制到输出目录（上游原行为）。
+         B) 单文件发布：资源改为 EmbeddedResource 打进 exe。
+            单文件应用的 AppContext.BaseDirectory 指向 exe 所在目录，
+            bundle 的自解压临时目录无法被现有代码直接访问，因此由
+            ResourceBootstrapper 在启动最早期把资源释放回 exe 旁的 resources，
+            这样 LanguageManager / ThemeManager / PluginManager / UpdateDialog
+            现有的 BaseDirectory 读取逻辑完全不用改。
+
+         注意：RuntimeIdentifier / SelfContained 只在 publish 命令行传入，
+         不写进 csproj，避免改变默认 build 输出路径（test 项目的 HintPath 依赖它）。
+         ================================================================== -->
+
+    <!-- A) 常规形态：复制 -->
+    <ItemGroup Condition="'$(PublishSingleFile)' != 'true'">
         <Content Include="resources\themes\*.json">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
             <CopyToPublishDirectory>Always</CopyToPublishDirectory>
@@ -43,18 +58,42 @@
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
             <CopyToPublishDirectory>Always</CopyToPublishDirectory>
         </Content>
+
+        <!-- 更新器由 build-net10.ps1 构建期生成，可能尚未存在于干净 clone 中 -->
+        <Content Include="resources\LiteMonitor.Updater.exe" Condition="Exists('resources\LiteMonitor.Updater.exe')">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+        </Content>
+
+        <!-- 上游仓库未提交该文件；加 Exists 条件避免 MSB3030，文件补齐后自动恢复复制 -->
+        <Content Include="使用说明(必读).txt" Condition="Exists('使用说明(必读).txt')">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+        </Content>
     </ItemGroup>
-	<ItemGroup>
-		<Content Include="resources\LiteMonitor.Updater.exe">
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
-			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
-		</Content>
-    <!-- 上游仓库未提交该文件；加 Exists 条件避免 MSB3030，文件补齐后自动恢复复制 -->
-    <Content Include="使用说明(必读).txt" Condition="Exists('使用说明(必读).txt')">
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
-			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
-		</Content>
-	</ItemGroup>
+
+    <!-- B) 单文件形态：嵌入 exe，启动期按需释放（已存在的文件不覆盖） -->
+    <ItemGroup Condition="'$(PublishSingleFile)' == 'true'">
+        <EmbeddedResource Include="resources\themes\*.json">
+            <LogicalName>LiteMonitor.Embedded.resources/themes/%(Filename)%(Extension)</LogicalName>
+        </EmbeddedResource>
+
+        <EmbeddedResource Include="resources\lang\*.json">
+            <LogicalName>LiteMonitor.Embedded.resources/lang/%(Filename)%(Extension)</LogicalName>
+        </EmbeddedResource>
+
+        <EmbeddedResource Include="resources\plugins\*.json">
+            <LogicalName>LiteMonitor.Embedded.resources/plugins/%(Filename)%(Extension)</LogicalName>
+        </EmbeddedResource>
+
+        <EmbeddedResource Include="resources\LiteMonitor.Updater.exe" Condition="Exists('resources\LiteMonitor.Updater.exe')">
+            <LogicalName>LiteMonitor.Embedded.resources/LiteMonitor.Updater.exe</LogicalName>
+        </EmbeddedResource>
+
+        <EmbeddedResource Include="使用说明(必读).txt" Condition="Exists('使用说明(必读).txt')">
+            <LogicalName>LiteMonitor.Embedded.使用说明(必读).txt</LogicalName>
+        </EmbeddedResource>
+    </ItemGroup>
 	
 	
 <ItemGroup>

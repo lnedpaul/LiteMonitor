@@ -170,22 +170,39 @@ Output:
 /bin/Release/net10.0-windows/LiteMonitor.exe
 ```
 
-### Publish (order matters)
+### Publish (single file, order matters)
 
-`resources/LiteMonitor.Updater.exe` is launched by the app for auto-update and **must target the same
-runtime**. A plain `dotnet build` / `dotnet publish LiteMonitor.csproj` only copies whatever updater binary
-is in the repo; an old (.NET 8) one silently produces a mixed package with a broken update path.
+The default deliverable is a **self-contained single-file** `LiteMonitor.exe`: the .NET 10 Desktop
+runtime, all managed/native dependencies, default themes / languages / plugins and the auto-updater
+are bundled into one exe. **No .NET runtime is required** on the target machine — copy one file and run.
 
 ```powershell
 .\build-net10.ps1
 ```
 
-The script publishes the self-contained updater, overwrites `resources\LiteMonitor.Updater.exe`,
-publishes the app, and verifies the shipped updater hash matches the freshly built one.
-Output: `dist\publish\app`. For a portable SDK: `.\build-net10.ps1 -DotNet "F:\path\to\dotnet.exe"`.
+The script:
 
-> The app is **framework-dependent** (requires .NET 10 Desktop Runtime on the target machine);
-> the updater is a **self-contained single file** (~71 MB) and needs no runtime.
+1. Publishes the self-contained updater and overwrites `resources\LiteMonitor.Updater.exe`
+   (build-time artifact, no longer committed to the repo);
+2. Publishes the app with `PublishSingleFile=true`, embedding the `resources` payload as
+   `EmbeddedResource`;
+3. Verifies the publish output contains only one exe, that resources were not copied as external
+   content, records SHA256 hashes, and removes intermediate folders.
+
+Output: `dist\LiteMonitor-single\LiteMonitor.exe` (~82 MB: self-contained .NET 10 Desktop
+runtime plus the 71 MB updater).
+For a portable SDK: `.\build-net10.ps1 -DotNet "F:\path\to\dotnet.exe"`.
+
+Build checksum: SHA256 `C0F2FB2BF1B8D9BD208F25D145D5A7E66A62A46DC09782947B5CC73B1B63FEE6`;
+embedded updater SHA256 `71317FA26F7033B8B77E1CAE79CC43428D81BD2458191AFCA441B6D0DF9A3F1E8`.
+
+> **First run**: the exe recreates a `resources\` folder next to itself (themes / languages /
+> plugins / updater) and then reads and writes `settings.json` in the same folder as before.
+> Existing files are never overwritten, so custom themes and updated updaters are preserved.
+>
+> Keep the exe in a **writable folder** (not `C:\Program Files`), same as the upstream build.
+> Run `build-net10.ps1` once after a clean clone. A plain `dotnet build` still produces the
+> conventional multi-file layout with resources copied as content, for development use.
 
 ---
 

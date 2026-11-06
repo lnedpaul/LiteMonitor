@@ -170,22 +170,37 @@ dotnet build -c Release
 /bin/Release/net10.0-windows/LiteMonitor.exe
 ```
 
-### 发布（顺序不可颠倒）
+### 发布（单文件版，顺序不可颠倒）
 
-`resources/LiteMonitor.Updater.exe` 是主程序运行时拉起的自动更新器，**必须与主程序同为 .NET 10**。
-直接 `dotnet build` 或 `dotnet publish LiteMonitor.csproj` 只会复制仓库里现成的更新器；
-若它是旧版（.NET 8）二进制，会打出「新主程序 + 旧更新器」的混合包，自动更新链路会静默失效。
+默认交付形态是**自包含单文件** `LiteMonitor.exe`：.NET 10 桌面运行时、全部托管 / 原生依赖、
+默认主题 / 语言 / 插件配置，以及自动更新器，都打进同一个 exe，
+目标机器**无需安装 .NET 运行时**，拷贝单个文件即可使用。
 
 ```powershell
 .\build-net10.ps1
 ```
 
-脚本依次执行：① 发布自包含单文件更新器 → ② 覆盖 `resources\LiteMonitor.Updater.exe` → ③ 发布主程序，
-并校验最终产物里的更新器与 ① 的哈希一致；结果输出到 `dist\publish\app`。
+脚本依次执行：
+
+1. 发布自包含单文件更新器 → 覆盖 `resources\LiteMonitor.Updater.exe`；
+   （更新器由构建期生成，已不再入库，避免仓库塞入 71 MB 二进制）
+2. 以 `PublishSingleFile=true` 发布主程序，把 `resources` 下的配置与更新器作为
+   `EmbeddedResource` 嵌入 exe；
+3. 自检输出目录只剩一个 exe、确认资源没有被复制成外部文件、记录 SHA256，并清理中间目录。
+
+结果：`dist\LiteMonitor-single\LiteMonitor.exe`（约 82 MB，自包含 .NET 10 桌面运行时 + 71 MB 更新器）。
 使用便携 SDK 时：`.\build-net10.ps1 -DotNet "F:\path\to\dotnet.exe"`。
 
-> 主程序为**框架依赖发布**，目标机器需安装 .NET 10 Desktop Runtime；
-> 更新器为**自包含单文件**（约 71 MB），不依赖运行时。
+本次构建的校验值：SHA256 `C0F2FB2BF1B8D9BD208F25D145D5A7E66A62A46DC09782947B5CC73B1B63FEE6`；
+内嵌更新器 SHA256 `71317FA26F7033B8B77E1CAE79CC43428D81BD2458191AFCA441B6D0DF9A3F1E8`。
+
+> **首次运行**：程序会在 exe 所在目录自动生成 `resources\` 子目录（主题 / 语言 / 插件 / 更新器），
+> 之后照常读写同目录下的 `settings.json` 等数据文件。已存在的文件不会被覆盖，
+> 用户自定义主题、语言、插件与更新过的更新器都会保留。
+>
+> 请把 exe 放在**可写目录**（不要放 `C:\Program Files`）——这一点与原版一致。
+> 干净 clone 后请先跑一次 `build-net10.ps1` 再启动；直接 `dotnet build` 仍是常规多文件形态，
+> 资源按 Content 复制，适用于开发调试。
 
 ---
 

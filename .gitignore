@@ -3,6 +3,19 @@
 **/obj/
 dist/
 
+# Build-time generated updater: published by build-net10.ps1 and embedded
+# into the single-file exe. Do not commit this 71 MB binary.
+resources/LiteMonitor.Updater.exe
+
+# Runtime-generated data (written next to LiteMonitor.exe)
+settings.json
+settings.json.bak
+TrafficHistory.json*
+HardwareHistory.json*
+LiteMonitor_Error.log
+resources/update.zip
+resources/LiteMonitorFPS.exe
+
 # IDE / local files
 .vs/
 *.user
