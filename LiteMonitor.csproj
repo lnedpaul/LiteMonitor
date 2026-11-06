@@ -52,6 +52,7 @@
     <!-- 上游仓库未提交该文件；加 Exists 条件避免 MSB3030，文件补齐后自动恢复复制 -->
     <Content Include="使用说明(必读).txt" Condition="Exists('使用说明(必读).txt')">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
 		</Content>
 	</ItemGroup>
 	
