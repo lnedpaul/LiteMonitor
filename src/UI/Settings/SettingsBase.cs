@@ -93,9 +93,14 @@ namespace LiteMonitor.src.UI.SettingsPage
             bool hideTray = chkHideTray != null ? chkHideTray.Checked : Config.HideTrayIcon;
             bool showBar  = chkShowTaskbar != null ? chkShowTaskbar.Checked : Config.ShowTaskbar;
 
-            if (hideMain && hideTray && !showBar)
+            // 与 SettingsGuard 共用同一规则：鼠标穿透同样会让主界面 / 任务栏失去交互能力，
+            // 只看三个 CheckBox 会漏判「横条 + 穿透 + 关闭任务栏 + 隐藏托盘」这类组合。
+            bool clickThrough = Config?.ClickThrough ?? false;
+            bool taskbarClickThrough = Config?.TaskbarClickThrough ?? false;
+
+            if (SettingsGuard.IsAllEntriesBlocked(hideMain, clickThrough, showBar, taskbarClickThrough, hideTray))
             {
-                MessageBox.Show("为了防止程序无法唤出，不能同时隐藏 [主界面]、[托盘图标] 和 [任务栏]。", 
+                MessageBox.Show("为了防止程序无法唤出，不能同时隐藏 [主界面]、[托盘图标] 和 [任务栏]；鼠标穿透同样会让入口失效。",
                                 "安全警告", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 
                 if (chkHideMain != null) chkHideMain.Checked = false;

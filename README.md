@@ -197,15 +197,21 @@ dotnet build -c Release
 4. 框架依赖版额外产出只含 exe 的分发 zip（不会把 `settings.json` 等用户数据打进去）。
 
 默认产物：`dist\LiteMonitor-single\LiteMonitor.exe`（6,127,386 B / 5.84 MB）
-与 `LiteMonitor-net10-win-x64.zip`（2,503,835 B / 2.39 MB）。
-使用便携 SDK 时：`.\build-net10.ps1 -DotNet "F:\path\to\dotnet.exe"`。
+与 `LiteMonitor-net10-win-x64.zip`（2,504,434 B / 2.39 MB）。
+
+**构建工具链**：.NET 10 SDK `10.0.403` 以便携版随项目放在 `_sdk10\`（已加入 `.gitignore`，
+不入库、不受其他项目清理影响）。脚本默认使用 `_sdk10\dotnet\dotnet.exe`，找不到才回退到 PATH
+里的 `dotnet`；也可显式指定 `.\build-net10.ps1 -DotNet "F:\path\to\dotnet.exe"`。
+若 `_sdk10` 被清理，从微软官方重新下载并解压即可，无需系统级安装、不改 PATH：
+`https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.403/dotnet-sdk-10.0.403-win-x64.zip`
+→ 解压到 `_sdk10\dotnet\`，使 `dotnet.exe` 位于 `_sdk10\dotnet\dotnet.exe`。
 
 本次构建的校验值：
 
-- 框架依赖版 exe SHA256 `DE8D8570C6145F25E188824A597C5A17632B7ADC61F4B0257A7DDCF1CD9CAB91`
-- 分发 zip SHA256 `FCA4027CD36FAB918FFC0C326FC5250051BC91E6D9FE46480C2E20934FB441E8`
-- 内嵌更新器 SHA256 `378E6A15B966660BE47111E4D52A05E3F67BAB80FDF7541DA26297B4027B0CC6`
-- 自包含版 exe SHA256 `C0F2FB2BF1B8D9BD208F25D145D5A7E66A62A46DC09782947B5CC73B1B63FEE6`
+- 框架依赖版 exe SHA256 `DBA5AB0C3A5EE732B7944559D09ED29456F5323AD8E8130B0C3652D838B6B994`
+- 分发 zip SHA256 `290BD57CDF6893993F51FAC6CD1CD753F3D53026D941A184EAC24A42F4B4DE2F`
+- 内嵌更新器 SHA256 `F67E4B475D56581627A54A366B90F7D3DB00E4AE03D1556301071C7909DCFEB9`
+- 自包含版 exe SHA256 `11451A743975C6CFD7FD10D11D4C14CBD1F487034E7C49ED15E3C4031286C81B`
 
 > **取舍**：框架依赖版要求目标机器装有 .NET 10 桌面运行时（本机 SDK 自带 10.0.14）；
 > 自包含版把运行时一起打进 exe，可拷到任意 Win10/11 x64，代价是约 82 MB。
@@ -218,6 +224,11 @@ dotnet build -c Release
 > 请把 exe 放在**可写目录**（不要放 `C:\Program Files`）——这一点与原版一致。
 > 干净 clone 后请先跑一次 `build-net10.ps1` 再启动；直接 `dotnet build` 仍是常规多文件形态，
 > 资源按 Content 复制，适用于开发调试。
+>
+> **入口防呆**：主界面、任务栏悬浮窗、托盘三个交互入口若同时失效（隐藏主界面或开启鼠标穿通、
+> 关闭任务栏显示或任务栏穿通、隐藏托盘图标），程序会自动恢复托盘图标并立即写回配置，
+> 避免软件变成「看得见却点不到、也无处可调」的悬浮条；启动时也会自愈历史上已经写坏的
+> `settings.json`。回归测试见 `test/入口守卫回归/`（20 条断言）。
 
 ---
 

@@ -55,7 +55,9 @@ namespace LiteMonitor.src.UI.SettingsPage
             group.AddToggle(this, "Menu.TopMost", () => Config.TopMost, v => Config.TopMost = v);
             group.AddToggle(this, "Menu.ClampToScreen", () => Config.ClampToScreen, v => Config.ClampToScreen = v);
             group.AddToggle(this, "Menu.AutoHide", () => Config.AutoHide, v => Config.AutoHide = v);
-            group.AddToggle(this, "Menu.ClickThrough", () => Config.ClickThrough, v => Config.ClickThrough = v);
+            var chkThrough = group.AddToggle(this, "Menu.ClickThrough", () => Config.ClickThrough, v => Config.ClickThrough = v);
+            // 穿透会封死主界面右键菜单，切换时也要重新校验是否还留有可交互入口
+            chkThrough.CheckedChanged += (s, e) => EnsureSafeVisibility(chkHide, null, null);
 
             // 3. Double Click Action
             string[] actions = { 

@@ -200,15 +200,22 @@ The script:
    (never `settings.json` or other user data).
 
 Default output: `dist\LiteMonitor-single\LiteMonitor.exe` (6,127,386 B / 5.84 MB) and
-`LiteMonitor-net10-win-x64.zip` (2,503,835 B / 2.39 MB).
-For a portable SDK: `.\build-net10.ps1 -DotNet "F:\path\to\dotnet.exe"`.
+`LiteMonitor-net10-win-x64.zip` (2,504,434 B / 2.39 MB).
+
+**Build toolchain**: a portable .NET 10 SDK `10.0.403` ships with the project in `_sdk10\`
+(git-ignored, so other projects cannot wipe it). The script uses `_sdk10\dotnet\dotnet.exe` by
+default and only falls back to `dotnet` on PATH if absent; override with
+`.\build-net10.ps1 -DotNet "F:\path\to\dotnet.exe"`.
+If `_sdk10` is removed, re-download the official zip (no system install, no PATH change):
+`https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.403/dotnet-sdk-10.0.403-win-x64.zip`
+→ extract into `_sdk10\dotnet\` so that `dotnet.exe` sits at `_sdk10\dotnet\dotnet.exe`.
 
 Build checksums:
 
-- Framework-dependent exe SHA256 `DE8D8570C6145F25E188824A597C5A17632B7ADC61F4B0257A7DDCF1CD9CAB91`
-- Ship zip SHA256 `FCA4027CD36FAB918FFC0C326FC5250051BC91E6D9FE46480C2E20934FB441E8`
-- Embedded updater SHA256 `378E6A15B966660BE47111E4D52A05E3F67BAB80FDF7541DA26297B4027B0CC6`
-- Self-contained exe SHA256 `C0F2FB2BF1B8D9BD208F25D145D5A7E66A62A46DC09782947B5CC73B1B63FEE6`
+- Framework-dependent exe SHA256 `DBA5AB0C3A5EE732B7944559D09ED29456F5323AD8E8130B0C3652D838B6B994`
+- Ship zip SHA256 `290BD57CDF6893993F51FAC6CD1CD753F3D53026D941A184EAC24A42F4B4DE2F`
+- Embedded updater SHA256 `F67E4B475D56581627A54A366B90F7D3DB00E4AE03D1556301071C7909DCFEB9`
+- Self-contained exe SHA256 `11451A743975C6CFD7FD10D11D4C14CBD1F487034E7C49ED15E3C4031286C81B`
 
 > **Trade-off**: the framework-dependent build needs .NET 10 Desktop Runtime on the target
 > machine (this SDK ships 10.0.14); the self-contained build bundles the runtime and runs on
@@ -218,6 +225,12 @@ Build checksums:
 > **First run**: the exe recreates a `resources\` folder next to itself (themes / languages /
 > plugins / updater) and then reads and writes `settings.json` in the same folder as before.
 > Existing files are never overwritten, so custom themes and updated updaters are preserved.
+>
+> **Interactive-entry guard**: if all three entry points (main window, taskbar window, tray icon)
+> become unusable at once — main window hidden or click-through, taskbar display off or
+> click-through, tray icon hidden — the app re-enables the tray icon and persists the fix, so the
+> overlay can never become unclickable and unrecoverable. Bad `settings.json` values are healed on
+> startup too. Regression tests: `test/入口守卫回归/` (20 assertions).
 >
 > Keep the exe in a **writable folder** (not `C:\Program Files`), same as the upstream build.
 > Run `build-net10.ps1` once after a clean clone. A plain `dotnet build` still produces the

@@ -1,3 +1,7 @@
+# Portable .NET 10 SDK used only for local builds (~1 GB, never commit).
+# Kept inside the project so other projects cannot wipe it.
+_sdk10/
+
 # Build output
 **/bin/
 **/obj/

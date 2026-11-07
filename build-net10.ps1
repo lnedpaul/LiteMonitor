@@ -3,7 +3,9 @@
 # -SelfContained：自包含单文件（约 82 MB，免装运行时，可拷到任意 Win10/11 x64）。
 # 顺序不可颠倒：先发布更新器 -> 覆盖 resources -> 再发布主程序（把更新器嵌进 exe）。
 param(
-    [string] $DotNet = "F:\AI agents\DSH\CSII mod\_sdk10\dotnet\dotnet.exe",
+    # 便携 SDK 随项目自带（_sdk10/，已加入 .gitignore），避免被其他项目清理。
+    # 未指定 -DotNet 时优先使用它，找不到再回退到 PATH 里的 dotnet。
+    [string] $DotNet = "",
     [string] $Configuration = "Release",
     [string] $OutDir = "",
     [switch] $SelfContained
@@ -13,6 +15,9 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Push-Location $root
 try {
+    if ([string]::IsNullOrWhiteSpace($DotNet)) {
+        $DotNet = Join-Path $root "_sdk10\dotnet\dotnet.exe"
+    }
     if (-not (Test-Path $DotNet)) {
         Write-Host "Portable SDK not found, falling back to dotnet in PATH"
         $DotNet = "dotnet"
@@ -71,8 +76,11 @@ try {
 
     # ---- 4. 只保留最终 exe，清掉中间目录 ----
     Copy-Item $exe (Join-Path $root "$OutDir\LiteMonitor.exe") -Force
-    Remove-Item "$OutDir\_app" -Recurse -Force
-    Remove-Item "$OutDir\_updater" -Recurse -Force
+    # 受管环境可能拦截 Remove-Item（回收站策略），中间目录清不掉不应让整次发布失败。
+    foreach ($intermediate in @("$OutDir\_app", "$OutDir\_updater")) {
+        try { Remove-Item $intermediate -Recurse -Force -ErrorAction Stop }
+        catch { Write-Host "WARN: cannot remove $intermediate; please delete it manually" }
+    }
 
     $final = Join-Path $root "$OutDir\LiteMonitor.exe"
     $sizeMB = [math]::Round((Get-Item $final).Length / 1MB, 2)
@@ -82,11 +90,16 @@ try {
     # 只把 exe 放进 zip，避免把同目录的 settings.json 等用户数据一起打包。
     if (-not $SelfContained) {
         $zip = Join-Path $root "$OutDir\LiteMonitor-net10-win-x64.zip"
-        if (Test-Path $zip) { Remove-Item $zip -Force }
-        # Compress-Archive 传单个文件路径时，zip 内只含该 exe，不会带上同目录的用户数据
-        Compress-Archive -Path $final -DestinationPath $zip -CompressionLevel Optimal
-        $zipMB = [math]::Round((Get-Item $zip).Length / 1MB, 2)
-        Write-Host "OK: $zip ($zipMB MB)"
+        # -Force 覆盖同名旧 zip；只把 exe 放进 zip，不会带上同目录的用户数据。
+        # 某些受管环境会拦截覆盖/删除操作，此时 exe 已经产好，不应让整次发布判失败。
+        try {
+            Compress-Archive -Path $final -DestinationPath $zip -CompressionLevel Optimal -Force
+            $zipMB = [math]::Round((Get-Item $zip).Length / 1MB, 2)
+            Write-Host "OK: $zip ($zipMB MB)"
+        }
+        catch {
+            Write-Host "WARN: zip creation was blocked; LiteMonitor.exe is ready, package it manually"
+        }
     }
 
     Write-Host "OK: $final ($sizeMB MB, $mode)"

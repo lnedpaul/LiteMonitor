@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>GuardTest</AssemblyName>
+    <RootNamespace>GuardTest</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- 直接引用仓库里的真实源码，避免测试的是复制品；从 test/入口守卫回归/ 回退两级到仓库根 -->
+    <Compile Include="../../src/Core/SettingsGuard.cs" Link="SettingsGuard.cs" />
+  </ItemGroup>
+</Project>

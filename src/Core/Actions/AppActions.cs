@@ -90,6 +90,15 @@ namespace LiteMonitor.src.Core.Actions
             
             // 鼠标穿透
             form.SetClickThrough(cfg.ClickThrough);
+
+            // 穿透会封死主界面右键菜单，而本方法可能被右键菜单单独调用
+            // （MenuManager 的穿透开关只走 ApplyWindowAttributes，不经过 ApplyVisibility）。
+            // 因此这里必须共用同一道防呆，否则死锁组合无法被拦截。
+            if (SettingsGuard.EnsureInteractiveEntry(cfg))
+            {
+                // 纠正后立刻把托盘显示出来；下面统一 RebuildMenus 同步菜单勾选状态
+                form.ShowTrayIcon();
+            }
             
             // 自动隐藏 (需要启动或停止 Timer)
             if (cfg.AutoHide) form.InitAutoHideTimer();
@@ -109,14 +118,12 @@ namespace LiteMonitor.src.Core.Actions
 
         public static void ApplyVisibility(Settings cfg, MainForm form)
         {
-            // --- 防呆逻辑 ---
-            // 检查三者（任务栏显示、隐藏界面、托盘图标）是否至少保留一个
-            if (!cfg.ShowTaskbar && cfg.HideMainForm && cfg.HideTrayIcon)
-            {
-                // 如果全关了，强制打开托盘图标
-                cfg.HideTrayIcon = false; 
-                // (注意：配置值的持久化Save由调用方负责，或者在这里Save也可以，但为了逻辑分离通常由调用方Save)
-            }
+            // --- 防呆：统一走 SettingsGuard ---
+            // 旧判定只检查「关闭任务栏 + 隐藏主界面 + 隐藏托盘」，漏掉了鼠标穿透：
+            // 横条还显示在屏幕上、但被 WS_EX_TRANSPARENT 穿透时 HideMainForm 仍为 false，
+            // 旧判定不成立，托盘会被隐藏，三个入口同时归零。
+            // 守卫内部纠正后立即落盘，避免菜单 handler「先 Save 再 Apply」把坏值写回磁盘。
+            SettingsGuard.EnsureInteractiveEntry(cfg);
 
             // --- 执行动作 ---
             

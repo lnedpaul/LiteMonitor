@@ -116,7 +116,9 @@ namespace LiteMonitor.src.UI.SettingsPage
 
             group.AddToggle(this, "Menu.TaskbarSingleLine", () => Config?.TaskbarSingleLine ?? false, v => { if(Config!=null) Config.TaskbarSingleLine = v; });
             group.AddToggle(this, "Menu.TaskbarHoverShowAll", () => Config?.TaskbarHoverShowAll ?? false, v => { if (Config != null) Config.TaskbarHoverShowAll = v; });
-            group.AddToggle(this, "Menu.ClickThrough", () => Config?.TaskbarClickThrough ?? false, v => { if(Config!=null) Config.TaskbarClickThrough = v; });
+            var chkThrough = group.AddToggle(this, "Menu.ClickThrough", () => Config?.TaskbarClickThrough ?? false, v => { if(Config!=null) Config.TaskbarClickThrough = v; });
+            // 任务栏穿透会封死任务栏右键菜单，切换时同样需要校验
+            chkThrough.CheckedChanged += (s, e) => { if (Config != null) EnsureSafeVisibility(null, null, chkShow); };
            
             // Monitor Selection
             var screens = Screen.AllScreens;

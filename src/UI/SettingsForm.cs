@@ -222,15 +222,10 @@ namespace LiteMonitor.src.UI
             }
             
             // ★★★ Draft 机制核心：提交事务 ★★★
-            // 1. 全局校验 (防止全隐藏死锁)
-            bool noInteractiveWindow = 
-                (_draftCfg.HideMainForm || _draftCfg.ClickThrough) && 
-                (!_draftCfg.ShowTaskbar || _draftCfg.TaskbarClickThrough) &&
-                _draftCfg.HideTrayIcon;
-
-            if (noInteractiveWindow)
+            // 1. 全局校验：与运行时右键菜单共用同一道防呆规则（SettingsGuard）
+            //    这里只判定不落盘，Draft 的变更在下面 Merge 后由 _cfg.Save() 统一持久化。
+            if (SettingsGuard.IsAllEntriesBlocked(_draftCfg))
             {
-                // 自动纠正：如果所有可交互入口都被封死（隐藏或穿透+隐藏托盘），强制显示托盘
                 _draftCfg.HideTrayIcon = false;
                 MessageBox.Show("为了防止所有可交互入口都被死锁（隐藏或穿透+隐藏托盘），已强制显示托盘图标。", "LiteMonitor", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
