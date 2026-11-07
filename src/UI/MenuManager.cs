@@ -450,12 +450,9 @@ namespace LiteMonitor
             {
                 try
                 {
-                    // 打开设置窗口
-                    using (var f = new LiteMonitor.src.UI.SettingsForm(cfg, ui, form))
-                    {
-                        if (!string.IsNullOrEmpty(targetPage)) f.SwitchPage(targetPage);
-                        f.ShowDialog(form);
-                    }
+                    // 统一走单例入口：托盘 / 任务栏右键菜单在模态期间仍可再次触发，
+                    // 直接 new 会无限叠加设置窗口，且各实例 Draft 会互相覆盖。
+                    SettingsFormHost.ShowOrActivate(cfg, ui, form, targetPage, modal: true);
                 }
                 catch (Exception ex)
                 {

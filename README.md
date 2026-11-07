@@ -197,7 +197,7 @@ dotnet build -c Release
 4. 框架依赖版额外产出只含 exe 的分发 zip（不会把 `settings.json` 等用户数据打进去）。
 
 默认产物：`dist\LiteMonitor-single\LiteMonitor.exe`（6,127,386 B / 5.84 MB）
-与 `LiteMonitor-net10-win-x64.zip`（2,504,434 B / 2.39 MB）。
+与 `LiteMonitor-net10-win-x64.zip`（2,504,709 B / 2.39 MB）。
 
 **构建工具链**：.NET 10 SDK `10.0.403` 以便携版随项目放在 `_sdk10\`（已加入 `.gitignore`，
 不入库、不受其他项目清理影响）。脚本默认使用 `_sdk10\dotnet\dotnet.exe`，找不到才回退到 PATH
@@ -208,10 +208,10 @@ dotnet build -c Release
 
 本次构建的校验值：
 
-- 框架依赖版 exe SHA256 `DBA5AB0C3A5EE732B7944559D09ED29456F5323AD8E8130B0C3652D838B6B994`
-- 分发 zip SHA256 `290BD57CDF6893993F51FAC6CD1CD753F3D53026D941A184EAC24A42F4B4DE2F`
-- 内嵌更新器 SHA256 `F67E4B475D56581627A54A366B90F7D3DB00E4AE03D1556301071C7909DCFEB9`
-- 自包含版 exe SHA256 `11451A743975C6CFD7FD10D11D4C14CBD1F487034E7C49ED15E3C4031286C81B`
+- 框架依赖版 exe SHA256 `21A200A6F8F92501DE3060DFB082A37F0D9B5B580F2F13379BE5FBEAABA7643A`
+- 分发 zip SHA256 `1DCA915BDE74ED1B856D8B97D5B32322AC7E9BC3F5CA9276C755AD14BF27A000`
+- 内嵌更新器 SHA256 `CBF65BFB40762100808B6A438F08C4DCB0C260D258606EC4A5711CD863F7EF4D`
+- 自包含版 exe SHA256 `56D3E809FD3EB45D2792C846D808D3F1C10537057AF134EFB4E582382961ED54`
 
 > **取舍**：框架依赖版要求目标机器装有 .NET 10 桌面运行时（本机 SDK 自带 10.0.14）；
 > 自包含版把运行时一起打进 exe，可拷到任意 Win10/11 x64，代价是约 82 MB。
@@ -229,6 +229,10 @@ dotnet build -c Release
 > 关闭任务栏显示或任务栏穿通、隐藏托盘图标），程序会自动恢复托盘图标并立即写回配置，
 > 避免软件变成「看得见却点不到、也无处可调」的悬浮条；启动时也会自愈历史上已经写坏的
 > `settings.json`。回归测试见 `test/入口守卫回归/`（20 条断言）。
+>
+> **设置面板单实例**：右键菜单、托盘、任务栏悬浮窗、插件管理入口和双击动作统一走
+> `SettingsFormHost`。已有设置窗口时只切页 / 恢复 / 激活，不再叠加新窗口，避免多个实例
+> 各自持有 Draft 配置而互相覆盖。回归测试见 `test/设置面板单例回归/`（24 条断言）。
 
 ---
 

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>SingleInstanceTest</AssemblyName>
+    <RootNamespace>SingleInstanceTest</RootNamespace>
+    <!-- 该测试不使用 WinForms 设计器，抑制 .NET 9+ 的 WFO1000 分析器 -->
+    <NoWarn>$(NoWarn);WFO1000</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- 直接编译仓库里的真实源码，避免测试的是复制品 -->
+    <Compile Include="../../src/UI/Helpers/SettingsFormHost.cs" Link="SettingsFormHost.cs" />
+  </ItemGroup>
+</Project>

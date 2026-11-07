@@ -322,8 +322,7 @@ namespace LiteMonitor.src.UI.Helpers
 
         public void OpenSettings()
         {
-            foreach (Form f in Application.OpenForms) { if (f is SettingsForm) { f.Activate(); return; } }
-            new SettingsForm(_cfg, _ui, (MainForm)_form).Show();
+            SettingsFormHost.ShowOrActivate(_cfg, _ui, (MainForm)_form, modal: false);
         }
 
         public void OpenTrafficHistory()

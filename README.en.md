@@ -200,7 +200,7 @@ The script:
    (never `settings.json` or other user data).
 
 Default output: `dist\LiteMonitor-single\LiteMonitor.exe` (6,127,386 B / 5.84 MB) and
-`LiteMonitor-net10-win-x64.zip` (2,504,434 B / 2.39 MB).
+`LiteMonitor-net10-win-x64.zip` (2,504,709 B / 2.39 MB).
 
 **Build toolchain**: a portable .NET 10 SDK `10.0.403` ships with the project in `_sdk10\`
 (git-ignored, so other projects cannot wipe it). The script uses `_sdk10\dotnet\dotnet.exe` by
@@ -212,10 +212,10 @@ If `_sdk10` is removed, re-download the official zip (no system install, no PATH
 
 Build checksums:
 
-- Framework-dependent exe SHA256 `DBA5AB0C3A5EE732B7944559D09ED29456F5323AD8E8130B0C3652D838B6B994`
-- Ship zip SHA256 `290BD57CDF6893993F51FAC6CD1CD753F3D53026D941A184EAC24A42F4B4DE2F`
-- Embedded updater SHA256 `F67E4B475D56581627A54A366B90F7D3DB00E4AE03D1556301071C7909DCFEB9`
-- Self-contained exe SHA256 `11451A743975C6CFD7FD10D11D4C14CBD1F487034E7C49ED15E3C4031286C81B`
+- Framework-dependent exe SHA256 `21A200A6F8F92501DE3060DFB082A37F0D9B5B580F2F13379BE5FBEAABA7643A`
+- Ship zip SHA256 `1DCA915BDE74ED1B856D8B97D5B32322AC7E9BC3F5CA9276C755AD14BF27A000`
+- Embedded updater SHA256 `CBF65BFB40762100808B6A438F08C4DCB0C260D258606EC4A5711CD863F7EF4D`
+- Self-contained exe SHA256 `56D3E809FD3EB45D2792C846D808D3F1C10537057AF134EFB4E582382961ED54`
 
 > **Trade-off**: the framework-dependent build needs .NET 10 Desktop Runtime on the target
 > machine (this SDK ships 10.0.14); the self-contained build bundles the runtime and runs on
@@ -231,6 +231,11 @@ Build checksums:
 > click-through, tray icon hidden — the app re-enables the tray icon and persists the fix, so the
 > overlay can never become unclickable and unrecoverable. Bad `settings.json` values are healed on
 > startup too. Regression tests: `test/入口守卫回归/` (20 assertions).
+>
+> **Single settings window**: the right-click menu, tray, taskbar window, plugin-manager entry and
+> double-click actions all go through `SettingsFormHost`. Reopening only switches the page, restores
+> and activates the existing window instead of stacking new ones, so multiple Draft configs can no
+> longer overwrite each other. Regression tests: `test/设置面板单例回归/` (24 assertions).
 >
 > Keep the exe in a **writable folder** (not `C:\Program Files`), same as the upstream build.
 > Run `build-net10.ps1` once after a clean clone. A plain `dotnet build` still produces the
