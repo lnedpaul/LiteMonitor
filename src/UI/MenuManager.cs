@@ -500,17 +500,19 @@ namespace LiteMonitor
             menu.Items.Add(new ToolStripSeparator());
 
             // === 开机启动 ===
+            // 勾选状态回读系统里的真实计划任务，而不是只镜像 settings.json。
+            // 注意：本开关对应「任务计划程序」，不会出现在「设置 → 应用 → 启动」列表里。
             var autoStart = new ToolStripMenuItem(LanguageManager.T("Menu.AutoStart"))
             {
-                Checked = cfg.AutoStart,
+                Checked = AutoStart.GetDisplayState(cfg),
                 CheckOnClick = true
             };
             autoStart.CheckedChanged += (_, __) =>
             {
                 cfg.AutoStart = autoStart.Checked;
                 cfg.Save();
-                // ★ 统一调用
-                AppActions.ApplyAutoStart(cfg);
+                // ★ 统一调用（失败时内部会回滚勾选并提示）
+                AppActions.ApplyAutoStart(cfg, form);
             };
             menu.Items.Add(autoStart);
 

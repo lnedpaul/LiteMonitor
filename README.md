@@ -196,8 +196,8 @@ dotnet build -c Release
 3. 自检输出目录只剩一个 exe、确认资源没有被复制成外部文件、记录 SHA256，并清理中间目录；
 4. 框架依赖版额外产出只含 exe 的分发 zip（不会把 `settings.json` 等用户数据打进去）。
 
-默认产物：`dist\LiteMonitor-single\LiteMonitor.exe`（6,127,386 B / 5.84 MB）
-与 `LiteMonitor-net10-win-x64.zip`（2,504,709 B / 2.39 MB）。
+默认产物：`dist\LiteMonitor-single\LiteMonitor.exe`（6,135,578 B / 5.85 MB）
+与 `LiteMonitor-net10-win-x64.zip`（2,498,024 B / 2.38 MB）。
 
 **构建工具链**：.NET 10 SDK `10.0.403` 以便携版随项目放在 `_sdk10\`（已加入 `.gitignore`，
 不入库、不受其他项目清理影响）。脚本默认使用 `_sdk10\dotnet\dotnet.exe`，找不到才回退到 PATH
@@ -208,10 +208,10 @@ dotnet build -c Release
 
 本次构建的校验值：
 
-- 框架依赖版 exe SHA256 `21A200A6F8F92501DE3060DFB082A37F0D9B5B580F2F13379BE5FBEAABA7643A`
-- 分发 zip SHA256 `1DCA915BDE74ED1B856D8B97D5B32322AC7E9BC3F5CA9276C755AD14BF27A000`
-- 内嵌更新器 SHA256 `CBF65BFB40762100808B6A438F08C4DCB0C260D258606EC4A5711CD863F7EF4D`
-- 自包含版 exe SHA256 `56D3E809FD3EB45D2792C846D808D3F1C10537057AF134EFB4E582382961ED54`
+- 框架依赖版 exe SHA256 `FBFCB7B3D2B2097E8BE530A4C315A093DDC577F7E86FF0FDBBFFDA1D7474D282`
+- 分发 zip SHA256 `4245B188224B4DD0E22CB39A393BCA8DBF34879D812CD58F4EFAE87A913977E5`
+- 内嵌更新器 SHA256 `7ABEE20463286B9DAB395B658CFBE4C9E61745F964E5C36EFB6ED391CDFF7EE7`
+- 自包含版 exe SHA256 `56D3E809FD3EB45D2792C846D808D3F1C10537057AF134EFB4E582382961ED54`（上一次构建，本次代码改动仅重新发布了框架依赖版）
 
 > **取舍**：框架依赖版要求目标机器装有 .NET 10 桌面运行时（本机 SDK 自带 10.0.14）；
 > 自包含版把运行时一起打进 exe，可拷到任意 Win10/11 x64，代价是约 82 MB。
@@ -233,6 +233,17 @@ dotnet build -c Release
 > **设置面板单实例**：右键菜单、托盘、任务栏悬浮窗、插件管理入口和双击动作统一走
 > `SettingsFormHost`。已有设置窗口时只切页 / 恢复 / 激活，不再叠加新窗口，避免多个实例
 > 各自持有 Draft 配置而互相覆盖。回归测试见 `test/设置面板单例回归/`（24 条断言）。
+>
+> **开机启动状态对账**：本开关使用 Windows 计划任务 `LiteMonitor_AutoStart`（登录触发、
+> 最高权限），因此**不会**出现在「设置 → 应用 → 启动」列表里——那个列表只枚举注册表 Run 项
+> 和启动文件夹快捷方式。核对请打开「任务计划程序 → 任务计划程序库」。程序现在会回读任务的
+> 真实状态（禁用 / 指向另一份 exe / 被外部删除都会显示未启用），写入失败时回滚勾选并提示原因，
+> 设置面板点「应用」时也会自动重建丢失的任务。
+>
+> **靠边自动隐藏状态机**：决策逻辑抽到 `src/Core/AutoHideState.cs`（纯 C#、可单测），修复了
+> 拖拽 `MouseUp` 丢失导致永久不隐藏、位置钳制与隐藏状态脱节、显示器变化后降级分支未重置状态、
+> 多屏下隐藏后唤不出、系统校时影响保护期等问题，并补上贴底边隐藏。
+> 回归测试见 `test/自动隐藏状态机回归/`（55 条断言）。
 
 ---
 

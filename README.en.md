@@ -199,8 +199,8 @@ The script:
 4. For the framework-dependent shape, also produces a ship zip containing only the exe
    (never `settings.json` or other user data).
 
-Default output: `dist\LiteMonitor-single\LiteMonitor.exe` (6,127,386 B / 5.84 MB) and
-`LiteMonitor-net10-win-x64.zip` (2,504,709 B / 2.39 MB).
+Default output: `dist\LiteMonitor-single\LiteMonitor.exe` (6,135,578 B / 5.85 MB) and
+`LiteMonitor-net10-win-x64.zip` (2,498,024 B / 2.38 MB).
 
 **Build toolchain**: a portable .NET 10 SDK `10.0.403` ships with the project in `_sdk10\`
 (git-ignored, so other projects cannot wipe it). The script uses `_sdk10\dotnet\dotnet.exe` by
@@ -212,10 +212,10 @@ If `_sdk10` is removed, re-download the official zip (no system install, no PATH
 
 Build checksums:
 
-- Framework-dependent exe SHA256 `21A200A6F8F92501DE3060DFB082A37F0D9B5B580F2F13379BE5FBEAABA7643A`
-- Ship zip SHA256 `1DCA915BDE74ED1B856D8B97D5B32322AC7E9BC3F5CA9276C755AD14BF27A000`
-- Embedded updater SHA256 `CBF65BFB40762100808B6A438F08C4DCB0C260D258606EC4A5711CD863F7EF4D`
-- Self-contained exe SHA256 `56D3E809FD3EB45D2792C846D808D3F1C10537057AF134EFB4E582382961ED54`
+- Framework-dependent exe SHA256 `FBFCB7B3D2B2097E8BE530A4C315A093DDC577F7E86FF0FDBBFFDA1D7474D282`
+- Ship zip SHA256 `4245B188224B4DD0E22CB39A393BCA8DBF34879D812CD58F4EFAE87A913977E5`
+- Embedded updater SHA256 `7ABEE20463286B9DAB395B658CFBE4C9E61745F964E5C36EFB6ED391CDFF7EE7`
+- Self-contained exe SHA256 `56D3E809FD3EB45D2792C846D808D3F1C10537057AF134EFB4E582382961ED54` (previous build; only the framework-dependent shape was republished for these fixes)
 
 > **Trade-off**: the framework-dependent build needs .NET 10 Desktop Runtime on the target
 > machine (this SDK ships 10.0.14); the self-contained build bundles the runtime and runs on
@@ -236,6 +236,21 @@ Build checksums:
 > double-click actions all go through `SettingsFormHost`. Reopening only switches the page, restores
 > and activates the existing window instead of stacking new ones, so multiple Draft configs can no
 > longer overwrite each other. Regression tests: `test/设置面板单例回归/` (24 assertions).
+>
+> **Auto-start state reconciliation**: this toggle uses the Windows scheduled task
+> `LiteMonitor_AutoStart` (logon trigger, highest privileges), so it does **not** appear in
+> "Settings → Apps → Startup" — that list only enumerates registry Run entries and Startup folder
+> shortcuts. Check "Task Scheduler → Task Scheduler Library" instead. The app now reads back the
+> real task state (disabled, pointing at a different exe, or deleted externally all show as off),
+> rolls the checkbox back with an error message when `schtasks` fails, and recreates a missing task
+> whenever "Apply" is clicked in the settings panel.
+>
+> **Edge auto-hide state machine**: the decision logic lives in `src/Core/AutoHideState.cs`
+> (plain C#, unit-testable). It fixes a lost `MouseUp` freezing the drag flag forever, position
+> clamping desynchronising from the hidden state, the display-change fallback not resetting state,
+> being unable to unhide on multi-monitor setups, and system clock adjustments affecting the
+> keep-visible window; bottom-edge hiding is now supported too.
+> Regression tests: `test/自动隐藏状态机回归/` (55 assertions).
 >
 > Keep the exe in a **writable folder** (not `C:\Program Files`), same as the upstream build.
 > Run `build-net10.ps1` once after a clean clone. A plain `dotnet build` still produces the

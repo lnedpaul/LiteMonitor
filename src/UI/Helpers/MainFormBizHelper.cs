@@ -23,18 +23,17 @@ namespace LiteMonitor.src.UI.Helpers
         private readonly MainFormWinHelper _winHelper;
         private readonly NotifyIcon _tray;
 
-        // 自动隐藏相关
+        // 自动隐藏相关：状态与决策全部委托给可独立测试的纯状态机 AutoHideState
         private System.Windows.Forms.Timer? _autoHideTimer;
         private System.Windows.Forms.Timer? _topMostTimer;
-        private bool _isHidden = false;
-        private readonly int _hideWidth = 4;
-        private readonly int _hideThreshold = 10;
-        private enum DockEdge { None, Left, Right, Top, Bottom }
-        private DockEdge _dock = DockEdge.None;
-        private DateTime _keepVisibleUntil = DateTime.MinValue;
+        private readonly AutoHideState _hideState = new AutoHideState();
 
-        public bool IsHidden => _isHidden;
-        public bool IsDragging { get; set; } = false;
+        public bool IsHidden => _hideState.IsHidden;
+        public bool IsDragging
+        {
+            get => _hideState.IsDragging;
+            set { if (value) _hideState.BeginDrag(); else _hideState.EndDrag(); }
+        }
 
         public MainFormBizHelper(Form form, Settings cfg, UIController ui, MainFormWinHelper winHelper)
         {
@@ -65,17 +64,38 @@ namespace LiteMonitor.src.UI.Helpers
 
         public void StopTimer() => _autoHideTimer?.Stop();
 
-        public void KeepVisible(double seconds) => _keepVisibleUntil = DateTime.Now.AddSeconds(seconds);
+        public void KeepVisible(double seconds) => _hideState.KeepVisible(seconds);
 
         public void ForceShow()
         {
-            if (_isHidden)
+            // 先取出隐藏时锁定的屏幕基准（ForceShow 会清空它），再复位状态。
+            var dockArea = _hideState.DockArea;
+            var edge = _hideState.Dock;
+            bool wasHidden = _hideState.ForceShow();
+            if (!wasHidden) return;
+
+            if (dockArea.HasValue)
             {
-                _isHidden = false;
-                _dock = DockEdge.None;
-                ClampToScreen(force: true); // 强制拉回
+                // 用同一块屏幕的工作区把窗口拉回，避免 Screen.FromControl 在中心越界时选错屏。
+                int? left = edge switch
+                {
+                    DockEdge.Right => dockArea.Value.Right - _form.Width,
+                    DockEdge.Left => dockArea.Value.Left,
+                    _ => (int?)null
+                };
+                int? top = edge switch
+                {
+                    DockEdge.Top => dockArea.Value.Top,
+                    DockEdge.Bottom => dockArea.Value.Bottom - _form.Height,
+                    _ => (int?)null
+                };
+                if (left.HasValue) _form.Left = left.Value;
+                if (top.HasValue) _form.Top = top.Value;
             }
-            KeepVisible(3.0);
+            else
+            {
+                ClampToScreen(force: true);
+            }
         }
 
         private void AutoHideTick(object? sender, EventArgs e) => CheckAutoHide();
@@ -107,49 +127,25 @@ namespace LiteMonitor.src.UI.Helpers
 
         private void CheckAutoHide()
         {
-            if (!_cfg.AutoHide) return;
-            if (!_form.Visible) return;
-            if (IsDragging || _form.ContextMenuStrip?.Visible == true) return;
-            if (DateTime.Now < _keepVisibleUntil) return;
-
+            // 环境数据由 WinForms 采集，决策交给纯状态机 AutoHideState（可由回归测试覆盖）。
+            // 隐藏态时状态机会使用自己锁定的 DockArea，这里传入的 area 只在未隐藏时生效，
+            // 从而避免窗口中心越界后 Screen.FromPoint 切到另一块显示器。
             var center = new Point(_form.Left + _form.Width / 2, _form.Top + _form.Height / 2);
-            var screen = Screen.FromPoint(center);
-            var area = screen.WorkingArea;
+            var workingArea = Screen.FromPoint(center).WorkingArea;
+            var area = new ScreenRect(workingArea.Left, workingArea.Top,
+                                      workingArea.Right, workingArea.Bottom);
+            var bounds = new WindowRect(_form.Left, _form.Top, _form.Width, _form.Height);
             var cursor = Cursor.Position;
 
-            bool nearLeft = _form.Left <= area.Left + _hideThreshold;
-            bool nearRight = area.Right - _form.Right <= _hideThreshold;
-            bool nearTop = _form.Top <= area.Top + _hideThreshold;
+            var decision = _hideState.Evaluate(
+                _cfg.AutoHide,
+                _form.Visible,
+                _form.ContextMenuStrip?.Visible == true,
+                area, bounds, cursor.X, cursor.Y);
 
-            bool shouldHide = nearLeft || nearRight || nearTop;
-
-            // 靠边 -> 隐藏
-            if (!_isHidden && shouldHide && !_form.Bounds.Contains(cursor))
-            {
-                if (nearRight) { _form.Left = area.Right - _hideWidth; _dock = DockEdge.Right; }
-                else if (nearLeft) { _form.Left = area.Left - (_form.Width - _hideWidth); _dock = DockEdge.Left; }
-                else if (nearTop) { _form.Top = area.Top - (_form.Height - _hideWidth); _dock = DockEdge.Top; }
-                _isHidden = true;
-                return;
-            }
-
-            // 鼠标靠近 -> 弹出
-            if (_isHidden)
-            {
-                const int hoverBand = 30;
-                bool isMouseOnHiddenPanel = false;
-
-                if (_dock == DockEdge.Right) isMouseOnHiddenPanel = cursor.X >= area.Right - _hideWidth && cursor.Y >= _form.Top && cursor.Y <= _form.Top + _form.Height;
-                else if (_dock == DockEdge.Left) isMouseOnHiddenPanel = cursor.X <= area.Left + _hideWidth && cursor.Y >= _form.Top && cursor.Y <= _form.Top + _form.Height;
-                else if (_dock == DockEdge.Top) isMouseOnHiddenPanel = cursor.Y <= area.Top + _hideWidth && cursor.X >= _form.Left && cursor.X <= _form.Left + _form.Width;
-
-                if (isMouseOnHiddenPanel)
-                {
-                    if (_dock == DockEdge.Right && cursor.X >= area.Right - hoverBand) { _form.Left = area.Right - _form.Width; _isHidden = false; _dock = DockEdge.None; }
-                    else if (_dock == DockEdge.Left && cursor.X <= area.Left + hoverBand) { _form.Left = area.Left; _isHidden = false; _dock = DockEdge.None; }
-                    else if (_dock == DockEdge.Top && cursor.Y <= area.Top + hoverBand) { _form.Top = area.Top; _isHidden = false; _dock = DockEdge.None; }
-                }
-            }
+            if (decision.Kind == HideActionKind.None) return;
+            if (decision.NewLeft.HasValue) _form.Left = decision.NewLeft.Value;
+            if (decision.NewTop.HasValue) _form.Top = decision.NewTop.Value;
         }
 
         // =================================================================
@@ -225,6 +221,10 @@ namespace LiteMonitor.src.UI.Helpers
 
         public void SavePos()
         {
+            // 隐藏态下 Left = area.Right - 4，是状态机的临时位置，绝不能写进配置：
+            // 否则下次启动 RestorePos 会把「隐藏位置」当成正常位置，且会连带触发一次错误的钳制。
+            if (_hideState.IsHidden) return;
+
             ClampToScreen(force: false);
             var center = new Point(_form.Left + _form.Width / 2, _form.Top + _form.Height / 2);
             var scr = Screen.FromPoint(center);
@@ -248,12 +248,6 @@ namespace LiteMonitor.src.UI.Helpers
                 int x = _cfg.Position.X;
                 int y = _cfg.Position.Y;
                 SetSafeLocation(area, x, y);
-                
-                // [Fix #288] 恢复位置后，重置隐藏状态，并让 Timer 重新接管
-                // 防止之前是 Hidden 状态，恢复后 Location 变了但 _isHidden 仍为 true，导致自动隐藏逻辑失效
-                _isHidden = false;
-                _dock = DockEdge.None;
-                KeepVisible(0.5); // 短暂保持可见，让用户确认位置，随后由 Timer 自动隐藏
             }
             else
             {
@@ -267,10 +261,18 @@ namespace LiteMonitor.src.UI.Helpers
                     _form.Location = new Point(x, y);
                 }
             }
+
+            // [Fix] 两个分支都必须复位隐藏状态。旧代码只在「找到原屏幕」分支做了这件事，
+            // 显示器重编号 / 拔掉外接屏后走降级分支时，窗口已经被挪回可见区域，
+            // 状态机却仍认为 _isHidden=true，隐藏分支被永久挡住 —— 这就是「有失效几率」的主因之一。
+            _hideState.ResetAfterRelocate(0.5);
         }
 
         public void ClampToScreen(bool force = false)
         {
+            // 隐藏态的位置由状态机独占（Left/Right 故意留在屏幕外 4px）。
+            // 旧代码会把它强行拉回屏幕内却不重置隐藏标志，造成「看得见但不再隐藏」的卡死。
+            if (_hideState.IsHidden) return;
             if (!_cfg.ClampToScreen && !force) return;
 
             var area = Screen.FromControl(_form).WorkingArea;

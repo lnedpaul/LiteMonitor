@@ -184,6 +184,10 @@ namespace LiteMonitor
                     _uiDragging = true;
                     _bizHelper.IsDragging = true;
                     _dragOffset = e.Location;
+                    // 捕获鼠标：即使指针移出窗口后才松开左键，也仍能收到 MouseUp。
+                    // 旧代码没有捕获，MouseUp 一丢失 IsDragging 就永久为 true，
+                    // 自动隐藏的每个 tick 都会直接 return，直到重启才恢复。
+                    this.Capture = true;
                 }
             };
             MouseMove += (_, e) =>
@@ -194,17 +198,12 @@ namespace LiteMonitor
                     Location = new Point(Left + e.X - _dragOffset.X, Top + e.Y - _dragOffset.Y);
                 }
             };
-            MouseUp += (_, e) =>
-            {
-                if (e.Button == MouseButtons.Left)
-                {
-                    _ui?.SetDragging(false);
-                    _uiDragging = false;
-                    _bizHelper.IsDragging = false;
-                    _bizHelper.ClampToScreen(); 
-                    _bizHelper.SavePos();
-                }
-            };
+            MouseUp += (_, e) => { if (_bizHelper.IsDragging) EndDrag(); };
+
+            // 兜底：捕获被系统收回、窗口失活、焦点被抢走时，也必须解锁拖拽标志。
+            // 判 !Capture 是为了避开 MouseDown 里刚设 Capture=true 触发的那次事件。
+            MouseCaptureChanged += (_, __) => { if (!this.Capture && _bizHelper.IsDragging) EndDrag(); };
+            Deactivate += (_, __) => { if (_bizHelper.IsDragging) EndDrag(); };
 
             // 双击
             this.DoubleClick += (_, __) => _bizHelper.HandleDoubleClick();
@@ -213,6 +212,20 @@ namespace LiteMonitor
             this.Resize += (_, __) => _winHelper.ApplyRoundedCorners();
             this.VisibleChanged += (_, __) => { if (Visible) _winHelper.RefreshTopMost(_cfg.TopMost, forceReinsert: true); };
             this.HandleCreated += (_, __) => _winHelper.RefreshTopMost(_cfg.TopMost, forceReinsert: true);
+        }
+
+        /// <summary>
+        /// 统一结束拖拽。顺序很重要：必须先清 IsDragging 再释放 Capture，
+        /// 否则 MouseCaptureChanged 会看到「仍在拖拽」而递归调用本方法。
+        /// </summary>
+        private void EndDrag()
+        {
+            _ui?.SetDragging(false);
+            _uiDragging = false;
+            _bizHelper.IsDragging = false;
+            this.Capture = false;
+            _bizHelper.ClampToScreen();
+            _bizHelper.SavePos();
         }
 
         public void ShowMainWindow()

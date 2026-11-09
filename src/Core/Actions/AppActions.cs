@@ -29,8 +29,10 @@ namespace LiteMonitor.src.Core.Actions
             ApplyLanguage(cfg, null, mainForm); 
 
             // 2. 系统级设置
-            // 开机启动会调用 schtasks 写计划任务，只能在开关变化时执行，避免每次应用设置都触发杀软拦截。
-            if (applyAutoStart) ApplyAutoStart(cfg);
+            // 开机启动每次应用设置都与系统真实计划任务对账（内部先比对，状态一致时不会写系统），
+            // 不再只在开关变化时执行：任务被外部删除/禁用后，点一次「应用」即可自动重建。
+            // applyAutoStart 参数仅为兼容旧调用点保留。
+            ApplyAutoStart(cfg, mainForm);
             ApplyWindowAttributes(cfg, mainForm); // 基础窗口属性
 
             // 3. 界面布局与主题 (传入原始状态以判断是否需要居中)
@@ -73,9 +75,31 @@ namespace LiteMonitor.src.Core.Actions
             ReloadTaskbarWindows();
         }
 
-        public static void ApplyAutoStart(Settings cfg)
+        /// <summary>
+        /// 应用「开机启动」并做失败回滚。
+        /// 旧实现直接调用 AutoStart.Set 且丢弃结果，schtasks 失败时菜单仍显示已勾选、
+        /// settings.json 也写成了 true，形成「假成功」。这里失败即回滚配置并提示用户。
+        /// </summary>
+        public static void ApplyAutoStart(Settings cfg, MainForm? form = null)
         {
-            AutoStart.Set(cfg.AutoStart);
+            if (AutoStart.Set(cfg.AutoStart, out string? error))
+            {
+                AutoStart.InvalidateCache();
+                return;
+            }
+
+            // 回滚到相反状态，保证磁盘配置、菜单勾选与系统实际状态三者一致。
+            cfg.AutoStart = !cfg.AutoStart;
+            SettingsHelper.Save(cfg);
+            AutoStart.InvalidateCache();
+            form?.RebuildMenus();
+
+            MessageBox.Show(
+                "开机启动设置未能写入系统，已恢复为原来的状态。\n\n" +
+                $"原因：{error}\n\n" +
+                "请确认程序位于本地硬盘、未被安全软件拦截；" +
+                "如需核对，请打开「任务计划程序」查看 LiteMonitor_AutoStart。",
+                "LiteMonitor", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         // =============================================================

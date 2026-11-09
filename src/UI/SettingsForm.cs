@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Windows.Forms;
 using LiteMonitor.src.Core;
 using LiteMonitor.src.Core.Actions;
+using LiteMonitor.src.SystemServices;
 using LiteMonitor.src.UI.Controls;
 using LiteMonitor.src.UI.SettingsPage;
 
@@ -52,6 +53,10 @@ namespace LiteMonitor.src.UI
             _ui = ui; 
             _mainForm = mainForm;
             
+            // 打开设置面板时先与系统里的真实计划任务对账，必须在深拷贝 Draft 之前，
+            // 否则用户看到的勾选仍是本地 JSON 的旧值（任务被删/禁用也不会反映出来）。
+            AutoStart.Reconcile(_cfg);
+
             // ★★★ Draft 机制核心：创建深拷贝 ★★★
             _draftCfg = _cfg.DeepClone();
             
@@ -208,8 +213,6 @@ namespace LiteMonitor.src.UI
 
         private void ApplySettings()
         {
-            bool oldAutoStart = _cfg.AutoStart;
-
             // 保存逻辑顺序优化
             foreach (var kv in _pages) 
             {
@@ -232,13 +235,14 @@ namespace LiteMonitor.src.UI
 
             // 2. 合并变更到 Live Settings
             SettingsChanger.Merge(_cfg, _draftCfg);
-            bool autoStartChanged = oldAutoStart != _cfg.AutoStart;
 
             // 3. 持久化保存
             _cfg.Save();
             
             // 4. 应用副作用 (刷新界面)
-            AppActions.ApplyAllSettings(_cfg, _mainForm, _ui, autoStartChanged);
+            // 开机启动不再依赖「开关值是否变化」：ApplyAllSettings 内部每次都与系统对账，
+            // 系统在外部被改动（任务被删/禁用）时，点一次「应用」即可自动修正。
+            AppActions.ApplyAllSettings(_cfg, _mainForm, _ui, true);
 
             // 5. [Fix] Rebase Draft to match Live
             // 将 Live 环境中由插件生成的最新监控项同步回 Draft，并保留动态显示属性

@@ -1,171 +1,266 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Security.Principal;
+using System.Linq;
 using System.Windows.Forms;
-using System.Xml.Linq; // 新增：用于 XDocument
+using System.Xml.Linq;
+using LiteMonitor;
 
 namespace LiteMonitor.src.SystemServices
 {
+    /// <summary>
+    /// 开机启动：以 Windows 计划任务（LogonTrigger + HighestAvailable）实现。
+    ///
+    /// 说明：Windows 11「设置 → 应用 → 启动」和任务管理器「启动应用」只枚举
+    /// 注册表 Run 项与启动文件夹快捷方式，**不会**列出计划任务，所以本开关
+    /// 不会出现在那个列表里。核对位置是「任务计划程序库 → LiteMonitor_AutoStart」。
+    ///
+    /// 保留计划任务而不是改注册表 Run 的原因：读硬件传感器需要 HighestAvailable
+    /// 提权，且需要 DisallowStartIfOnBatteries=false 才能在电池状态下自启。
+    /// </summary>
     public static class AutoStart
     {
         private const string TaskName = "LiteMonitor_AutoStart";
 
-        public static void Set(bool enabled)
+        // 状态查询需要启动 schtasks 进程，菜单每次重建都会读，这里做短缓存避免卡顿。
+        private static readonly object _cacheLock = new object();
+        private static bool? _cachedState;
+        private static DateTime _cacheUntilUtc = DateTime.MinValue;
+        private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(20);
+
+        private static string CurrentExePath => Process.GetCurrentProcess().MainModule!.FileName!;
+
+        public static void InvalidateCache()
         {
-            string exePath = Process.GetCurrentProcess().MainModule!.FileName!;
-
-            // 1. 网络路径拦截 (保留你的原始逻辑)
-            try
+            lock (_cacheLock)
             {
-                string root = Path.GetPathRoot(exePath)!;
-                if ((!string.IsNullOrEmpty(root) && new DriveInfo(root).DriveType == DriveType.Network) || new Uri(exePath).IsUnc)
-                {
-                    MessageBox.Show("Windows 计划任务不支持在网络路径下运行。\n请移动到本地硬盘。", "错误", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
-                }
-            }
-            catch { }
-
-            if (enabled)
-            {
-                if (IsEnabledForCurrentExe(exePath)) return;
-
-                // 使用 XML 方案，这是唯一能同时满足 [不报PowerShell错误] + [实现电池启动] 的方案
-                string tempXmlPath = Path.Combine(Path.GetTempPath(), $"LiteMonitor_Task_{Guid.NewGuid()}.xml");
-
-                try
-                {
-                    // 生成 XML 内容 (修改为获取 XDocument 对象)
-                    var doc = GetTaskXml(exePath);
-                    
-                    // 写入临时文件 (修改为 doc.Save，它会自动处理 UTF-16 编码)
-                    doc.Save(tempXmlPath);
-
-                    // 调用 schtasks 导入 XML
-                    // /F: 强制覆盖
-                    // /TN: 任务名
-                    // /XML: 指定配置文件
-                    var startInfo = new ProcessStartInfo
-                    {
-                        FileName = "schtasks.exe",
-                        Arguments = $"/Create /TN \"{TaskName}\" /XML \"{tempXmlPath}\" /F",
-                        CreateNoWindow = true,
-                        UseShellExecute = false // 必须为 false 才能配合 CreateNoWindow 隐藏窗口
-                    };
-                    
-                    using (var p = Process.Start(startInfo))
-                    {
-                        p?.WaitForExit();
-                        
-                        // 可选：检查退出码，如果非0则记录日志
-                        // if (p.ExitCode != 0) { ... }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // 捕获所有 IO 或 进程异常
-                    MessageBox.Show($"设置失败: {ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-                finally
-                {
-                    // 确保无论是否出错，都尝试清理临时文件
-                    try
-                    {
-                        if (File.Exists(tempXmlPath)) File.Delete(tempXmlPath);
-                    }
-                    catch { /* 忽略删除失败，临时文件残留无害 */ }
-                }
-            }
-            else
-            {
-                // 删除任务 (逻辑保持不变)
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = "schtasks.exe",
-                    Arguments = $"/Delete /TN \"{TaskName}\" /F",
-                    CreateNoWindow = true,
-                    UseShellExecute = false
-                };
-                using (var p = Process.Start(startInfo))
-                {
-                    p?.WaitForExit();
-                }
-            }
-        }
-
-        public static bool IsEnabled()
-        {
-            try
-            {
-                var psi = new ProcessStartInfo("schtasks", $"/Query /TN \"{TaskName}\"")
-                {
-                    CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true
-                };
-                using (var p = Process.Start(psi))
-                {
-                    if (p == null) return false;
-                    p.WaitForExit();
-                    return p.ExitCode == 0;
-                }
-            }
-            catch { return false; }
-        }
-
-        private static bool IsEnabledForCurrentExe(string exePath)
-        {
-            try
-            {
-                var psi = new ProcessStartInfo("schtasks", $"/Query /TN \"{TaskName}\" /XML")
-                {
-                    CreateNoWindow = true,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true
-                };
-
-                using (var p = Process.Start(psi))
-                {
-                    if (p == null) return false;
-
-                    string xml = p.StandardOutput.ReadToEnd();
-                    p.WaitForExit();
-                    if (p.ExitCode != 0 || string.IsNullOrWhiteSpace(xml)) return false;
-
-                    var doc = XDocument.Parse(xml);
-                    var command = doc.Descendants()
-                        .FirstOrDefault(x => x.Name.LocalName == "Command")
-                        ?.Value;
-                    var enabled = doc.Descendants()
-                        .FirstOrDefault(x => x.Name.LocalName == "Enabled" &&
-                                             x.Parent?.Name.LocalName == "Settings")
-                        ?.Value;
-
-                    // 如果任务被用户或系统禁用，即使命令路径一致，也不能跳过重建/启用。
-                    bool taskEnabled = !string.Equals(enabled, "false", StringComparison.OrdinalIgnoreCase);
-                    return taskEnabled && string.Equals(command, exePath, StringComparison.OrdinalIgnoreCase);
-                }
-            }
-            catch
-            {
-                return false;
+                _cachedState = null;
+                _cacheUntilUtc = DateTime.MinValue;
             }
         }
 
         /// <summary>
-        /// 生成 XML 配置：完美复刻原始逻辑 + 增加高级电池/延迟设置
-        /// (已重构为 XDocument 方式)
+        /// 查询系统里的真实状态。
+        /// true = 任务存在、已启用且指向当前 exe；false = 任务确实不存在/已禁用/指向旧副本；
+        /// null = 查询过程本身失败（权限、服务不可用等），调用方不应据此改动配置。
         /// </summary>
+        public static bool? QueryState(bool useCache = true)
+        {
+            if (useCache)
+            {
+                lock (_cacheLock)
+                {
+                    if (_cachedState.HasValue && DateTime.UtcNow < _cacheUntilUtc)
+                        return _cachedState;
+                }
+            }
+
+            bool? result = QueryFromSystem();
+
+            lock (_cacheLock)
+            {
+                _cachedState = result;
+                _cacheUntilUtc = DateTime.UtcNow + CacheTtl;
+            }
+            return result;
+        }
+
+        /// <summary>菜单显示用：优先系统真实状态；无法判定时回退本地配置。</summary>
+        public static bool GetDisplayState(Settings cfg) => QueryState() ?? (cfg?.AutoStart ?? false);
+
+        /// <summary>
+        /// 把本地配置与系统真实状态对齐。仅在能确定系统状态时改写，避免查询失败把用户勾选清掉。
+        /// 返回 true 表示确实改动了配置（调用方应刷新菜单）。
+        /// </summary>
+        public static bool Reconcile(Settings cfg)
+        {
+            if (cfg == null) return false;
+            var real = QueryState();
+            if (!real.HasValue || real.Value == cfg.AutoStart) return false;
+
+            cfg.AutoStart = real.Value;
+            SettingsHelper.Save(cfg);
+            return true;
+        }
+
+        /// <summary>兼容旧调用：查询失败也算未启用。</summary>
+        public static bool IsEnabled() => QueryState() == true;
+
+        private static bool? QueryFromSystem()
+        {
+            try
+            {
+                var (code, stdout, stderr) = RunSchtasks($"/Query /TN \"{TaskName}\" /XML");
+                if (code != 0)
+                {
+                    // 只有「明确找不到任务」才能判定为未启用；权限错误等一律返回 null。
+                    return LooksLikeMissing(stdout + " " + stderr) ? false : (bool?)null;
+                }
+
+                string xml = (stdout ?? "").TrimStart('\uFEFF', '\r', '\n', ' ', '\t');
+                if (xml.Length == 0) return null;
+
+                try
+                {
+                    var doc = XDocument.Parse(xml);
+                    var enabled = doc.Descendants()
+                        .FirstOrDefault(x => x.Name.LocalName == "Enabled" &&
+                                             x.Parent?.Name.LocalName == "Settings")?.Value;
+                    if (string.Equals(enabled, "false", StringComparison.OrdinalIgnoreCase))
+                        return false;
+
+                    var command = doc.Descendants()
+                        .FirstOrDefault(x => x.Name.LocalName == "Command")?.Value;
+                    // 任务还在、但指向另一份 exe（用户换了目录）时，当前这份并没有自启。
+                    if (!string.IsNullOrEmpty(command) &&
+                        !string.Equals(command, CurrentExePath, StringComparison.OrdinalIgnoreCase))
+                        return false;
+
+                    return true;
+                }
+                catch
+                {
+                    // 某些系统语言/控制台代码页下 /XML 输出无法解析，此时退出码 0 已足够说明任务存在。
+                    return true;
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static bool LooksLikeMissing(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+            string[] markers =
+            {
+                "cannot find", "does not exist", "not found",
+                "找不到", "未找到", "不存在", "没有找到"
+            };
+            return markers.Any(m => text.IndexOf(m, StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        /// <summary>
+        /// 写入/删除计划任务。返回 false 时 error 给出原因，调用方必须回滚勾选状态。
+        /// 旧实现完全忽略 schtasks 退出码，导致杀软拦截或权限不足时「菜单打勾但系统里什么都没有」。
+        /// </summary>
+        public static bool Set(bool enabled, out string? error)
+        {
+            error = null;
+            string exePath = CurrentExePath;
+
+            try
+            {
+                string root = Path.GetPathRoot(exePath)!;
+                if ((!string.IsNullOrEmpty(root) && new DriveInfo(root).DriveType == DriveType.Network) ||
+                    new Uri(exePath).IsUnc)
+                {
+                    error = "程序位于网络路径，Windows 计划任务不支持在此运行，请移动到本地硬盘。";
+                    return false;
+                }
+            }
+            catch { /* 路径判定失败不阻断后续创建 */ }
+
+            // 已经处于目标状态就不重复写系统，避免每次点「应用」都触发杀软拦截。
+            var current = QueryState(useCache: false);
+            if (current.HasValue && current.Value == enabled) return true;
+
+            if (enabled)
+            {
+                string tempXmlPath = Path.Combine(Path.GetTempPath(), $"LiteMonitor_Task_{Guid.NewGuid()}.xml");
+                try
+                {
+                    // XDocument.Save 自动写 UTF-16，schtasks /XML 需要这个编码。
+                    GetTaskXml(exePath).Save(tempXmlPath);
+
+                    var (code, _, stderr) = RunSchtasks($"/Create /TN \"{TaskName}\" /XML \"{tempXmlPath}\" /F");
+                    InvalidateCache();
+                    if (code != 0)
+                    {
+                        error = string.IsNullOrWhiteSpace(stderr)
+                            ? $"schtasks 创建任务失败（退出码 {code}）"
+                            : $"schtasks 创建任务失败（退出码 {code}）：{stderr.Trim()}";
+                        return false;
+                    }
+
+                    // 退出码 0 也可能因为任务被策略禁用而未真正生效，做一次软校验。
+                    var verify = QueryState(useCache: false);
+                    if (verify.HasValue && !verify.Value)
+                    {
+                        error = "计划任务创建后校验未通过，可能被安全软件或组策略拦截。";
+                        return false;
+                    }
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    error = ex.Message;
+                    return false;
+                }
+                finally
+                {
+                    try { if (File.Exists(tempXmlPath)) File.Delete(tempXmlPath); }
+                    catch { /* 临时文件残留无害 */ }
+                }
+            }
+            else
+            {
+                try
+                {
+                    var (code, stdout, stderr) = RunSchtasks($"/Delete /TN \"{TaskName}\" /F");
+                    InvalidateCache();
+                    if (code != 0)
+                    {
+                        string output = (stdout + " " + stderr) ?? "";
+                        if (LooksLikeMissing(output)) return true; // 本来就删了/不存在
+                        error = string.IsNullOrWhiteSpace(output.Trim())
+                            ? $"schtasks 删除任务失败（退出码 {code}）"
+                            : $"schtasks 删除任务失败（退出码 {code}）：{output.Trim()}";
+                        return false;
+                    }
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    error = ex.Message;
+                    return false;
+                }
+            }
+        }
+
+        /// <summary>兼容旧签名（忽略错误信息），保留给不关心结果的调用点。</summary>
+        public static bool Set(bool enabled) => Set(enabled, out _);
+
+        private static (int Code, string Out, string Err) RunSchtasks(string arguments)
+        {
+            var psi = new ProcessStartInfo("schtasks.exe", arguments)
+            {
+                CreateNoWindow = true,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            using var p = Process.Start(psi);
+            if (p == null) return (-1, "", "无法启动 schtasks.exe");
+
+            // 并行排空两个管道，避免 stderr 缓冲区写满造成死锁。
+            var outTask = p.StandardOutput.ReadToEndAsync();
+            var errTask = p.StandardError.ReadToEndAsync();
+            p.WaitForExit();
+            return (p.ExitCode,
+                    outTask.GetAwaiter().GetResult(),
+                    errTask.GetAwaiter().GetResult());
+        }
+
+        /// <summary>生成任务 XML：登录触发、延迟 5 秒、最高权限、不受电池策略限制。</summary>
         private static XDocument GetTaskXml(string exePath)
         {
-            // 细节保留：获取工作目录，对应你原始代码的 /STRTIN
             string exeDir = Path.GetDirectoryName(exePath)!;
-
             XNamespace ns = "http://schemas.microsoft.com/windows/2004/02/mit/task";
 
-            // 使用 XDocument 构建 XML
-            // 自动处理特殊字符转义（如路径中的 & ' 等）
-            // 自动处理编码声明 (UTF-16)
-            var doc = new XDocument(
+            return new XDocument(
                 new XDeclaration("1.0", "UTF-16", null),
                 new XElement(ns + "Task",
                     new XAttribute("version", "1.2"),
@@ -212,10 +307,6 @@ namespace LiteMonitor.src.SystemServices
                     )
                 )
             );
-
-            return doc;
         }
-
-        // 原 EscapeXml 方法已移除，因 XDocument 会自动处理转义
     }
 }
