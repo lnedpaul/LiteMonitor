@@ -215,7 +215,7 @@ Build checksums:
 - Framework-dependent exe SHA256 `FBFCB7B3D2B2097E8BE530A4C315A093DDC577F7E86FF0FDBBFFDA1D7474D282`
 - Ship zip SHA256 `4245B188224B4DD0E22CB39A393BCA8DBF34879D812CD58F4EFAE87A913977E5`
 - Embedded updater SHA256 `7ABEE20463286B9DAB395B658CFBE4C9E61745F964E5C36EFB6ED391CDFF7EE7`
-- Self-contained exe SHA256 `56D3E809FD3EB45D2792C846D808D3F1C10537057AF134EFB4E582382961ED54` (previous build; only the framework-dependent shape was republished for these fixes)
+- Self-contained exe SHA256 `540563A56DEA7EDAB72D01F25ED6FEA744A65D319B23939B8CD3F07F877DC124` (86,031,023 B / 82.05 MB, republished in the same batch)
 
 > **Trade-off**: the framework-dependent build needs .NET 10 Desktop Runtime on the target
 > machine (this SDK ships 10.0.14); the self-contained build bundles the runtime and runs on
