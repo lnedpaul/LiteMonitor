@@ -179,9 +179,11 @@ namespace LiteMonitor.src.SystemServices
                         newGpu = hw;
                     }
                     
-                    // ★★★ [新增] GPU 风扇映射 ★★★
+                    // ★★★ GPU 风扇映射 ★★★
+                    // 只接受真正的 Fan(RPM) 传感器。过去找不到 Fan 时会退化到 Control，
+                    // 但 Control 是 0–100 的风扇占空比百分比，当成 RPM 显示属于误导。
+                    // EC 控风扇 / 只暴露 Control 的机型，改由 VendorFanReader 提供真实 RPM。
                     var fan = hw.Sensors.FirstOrDefault(s => s.SensorType == SensorType.Fan);
-                    if (fan == null) fan = hw.Sensors.FirstOrDefault(s => s.SensorType == SensorType.Control);
                     if (fan != null) newMap.TryAdd("GPU.Fan", fan);
                 }
                 

@@ -196,8 +196,8 @@ dotnet build -c Release
 3. 自检输出目录只剩一个 exe、确认资源没有被复制成外部文件、记录 SHA256，并清理中间目录；
 4. 框架依赖版额外产出只含 exe 的分发 zip（不会把 `settings.json` 等用户数据打进去）。
 
-默认产物：`dist\LiteMonitor-single\LiteMonitor.exe`（6,135,578 B / 5.85 MB）
-与 `LiteMonitor-net10-win-x64.zip`（2,498,024 B / 2.38 MB）。
+默认产物：`dist\LiteMonitor-single\LiteMonitor.exe`（6,143,770 B / 5.86 MB）
+与 `LiteMonitor-net10-win-x64.zip`（2,500,688 B / 2.38 MB）。
 
 **构建工具链**：.NET 10 SDK `10.0.403` 以便携版随项目放在 `_sdk10\`（已加入 `.gitignore`，
 不入库、不受其他项目清理影响）。脚本默认使用 `_sdk10\dotnet\dotnet.exe`，找不到才回退到 PATH
@@ -208,10 +208,10 @@ dotnet build -c Release
 
 本次构建的校验值：
 
-- 框架依赖版 exe SHA256 `FBFCB7B3D2B2097E8BE530A4C315A093DDC577F7E86FF0FDBBFFDA1D7474D282`
-- 分发 zip SHA256 `4245B188224B4DD0E22CB39A393BCA8DBF34879D812CD58F4EFAE87A913977E5`
-- 内嵌更新器 SHA256 `7ABEE20463286B9DAB395B658CFBE4C9E61745F964E5C36EFB6ED391CDFF7EE7`
-- 自包含版 exe SHA256 `540563A56DEA7EDAB72D01F25ED6FEA744A65D319B23939B8CD3F07F877DC124`（86,031,023 B / 82.05 MB，同批次重新发布）
+- 框架依赖版 exe SHA256 `DF2E8D27E67338579878C01AFE24EB14EA7BFFB6D05D5680EEFFDBD862158C1B`
+- 分发 zip SHA256 `DB288D1B70163034EF490DC469C56335C609BB74E80A1549B40881DBCB6A27D7`
+- 内嵌更新器 SHA256 `CF176E67A46503B07BA1FB2EC08B5BCBEB6EF84B861657CD59E583295A9E4744`
+- 自包含版 exe SHA256 `77B63D938692FA36B209118492105DA05E574B1DE877D5588DD44E4439B08EDD`（86,031,023 B / 82.05 MB，同批次重新发布）
 
 > **取舍**：框架依赖版要求目标机器装有 .NET 10 桌面运行时（本机 SDK 自带 10.0.14）；
 > 自包含版把运行时一起打进 exe，可拷到任意 Win10/11 x64，代价是约 82 MB。
@@ -244,6 +244,19 @@ dotnet build -c Release
 > 拖拽 `MouseUp` 丢失导致永久不隐藏、位置钳制与隐藏状态脱节、显示器变化后降级分支未重置状态、
 > 多屏下隐藏后唤不出、系统校时影响保护期等问题，并补上贴底边隐藏。
 > 回归测试见 `test/自动隐藏状态机回归/`（55 条断言）。
+>
+> **笔记本风扇转速（厂商 ACPI 通道）**：由 EC 控风扇的笔记本（如小米游戏本 TM1806）在
+> LibreHardwareMonitor 里枚举不到 `Fan` 传感器。程序现在会自动探测 BIOS 经
+> `root\wmi:RW_TMAWMI` 暴露的数据块（`ACPI\PNP0C14\...`），读出 CPU / GPU 风扇真实 RPM，
+> 优先用于 `CPU.Fan` / `GPU.Fan`；读不到时自动回退到原有 LHM 逻辑，其他机型行为不变。
+> 该数据块需要管理员权限，而本程序清单本来就 `requireAdministrator`；采集在后台线程进行，
+> 不阻塞界面，也不写入任何 EC 寄存器、不调用厂商服务接口，更不依赖厂商控制软件是否运行。
+> 「右键 → 系统硬件详情」新增「厂商风扇通道 (ACPI WMI)」节点，可看当前 RPM、原始数据块，
+> 或通道不可用的具体原因。
+> 同时修掉两处误导：`GPU.Fan` 不再把 `Control`（0–100% 占空比）当 RPM 显示；
+> 风扇项确实没有传感器时显示 `--`，不再是 0 RPM。
+> 字段布局由本机均衡 / 全速两组真机采样与厂商工具读数对照确定（数据块 `[4..7]`=CPU 风扇、
+> `[8..11]`=GPU 风扇，小端 uint32），回归测试见 `test/厂商风扇回归/`（46 条断言）。
 
 ---
 

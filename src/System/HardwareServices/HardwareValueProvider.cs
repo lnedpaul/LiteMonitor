@@ -55,6 +55,10 @@ namespace LiteMonitor.src.SystemServices
 
             // 初始化子服务
             _componentProcessor = new ComponentProcessor(c, s, map);
+
+            // 启动厂商风扇通道的后台采集（惰性单例、非阻塞）。
+            // 非目标机型会在连续失败后自动降频，取值时自动回退到 LHM。
+            _ = VendorFanReader.Instance;
         }
 
         // ★★★ [新增] 清空缓存并重新预热（当硬件重载或配置变更时调用） ★★★
@@ -219,6 +223,10 @@ namespace LiteMonitor.src.SystemServices
         // ===========================================================
         public float? GetStartupValue(string key)
         {
+            // 启动阶段也允许厂商风扇通道立即出数，避免先闪一下 "--" 再变正常。
+            var vendorRpm = VendorFanReader.Instance.GetRpm(key);
+            if (vendorRpm.HasValue) return vendorRpm;
+
             if (_lastValidMap.TryGetValue(key, out float lastVal)) return lastVal;
 
             bool useCounter = _cfg.UseWinPerCounters && _perfManager.IsInitialized;
@@ -410,14 +418,14 @@ namespace LiteMonitor.src.SystemServices
                     case "CPU.Pump":
                     case "CASE.Fan":
                     case "GPU.Fan":
-                        if (_manualSensorCache.TryGetValue(key, out var sFan))
+                        // ① 厂商 ACPI WMI 通道优先：EC 控风扇的笔记本 LHM 枚举不到 Fan 传感器，
+                        //    但 BIOS 已经提供现成 RPM（见 TmaFanBuffer / VendorFanReader）。
+                        //    取不到时 result 为 null，下面的 LHM 分支与通用兜底照常工作。
+                        result = VendorFanReader.Instance.GetRpm(key);
+
+                        if (!result.HasValue && _manualSensorCache.TryGetValue(key, out var sFan))
                         {
                             result = sFan.Value;
-                        }
-                        else 
-                        {
-                            if (_manualSensorCache.TryGetValue(key, out var autoS) && autoS.Value.HasValue)
-                                result = autoS.Value.Value;
                         }
                         if (result.HasValue && result.Value < 10000f) 
                             _cfg.UpdateMaxRecord(key, result.Value);

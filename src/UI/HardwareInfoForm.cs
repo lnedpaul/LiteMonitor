@@ -13,6 +13,7 @@ namespace LiteMonitor.src.UI
     public class HardwareInfoForm : Form
     {
         private LiteTreeView _tree;
+        private TreeNode? _vendorNode;
         private System.Windows.Forms.Timer _refreshTimer;
         private Panel _headerPanel;
          private TextBox _searchInput;
@@ -96,6 +97,15 @@ namespace LiteMonitor.src.UI
         private void UpdateVisibleNodesSmart()
         {
             if (!this.Visible || _tree.IsDisposed) return;
+
+            // 厂商风扇通道是后台异步采集的，窗口刚打开时可能还没拿到第一帧；
+            // 每秒把诊断行刷新成最新状态（数据 / 不可用原因）。
+            if (_vendorNode?.TreeView == _tree && _vendorNode.Nodes.Count > 0)
+            {
+                string text = VendorFanReader.Instance.GetDiagnosticText();
+                if (_vendorNode.Nodes[0].Text != text) _vendorNode.Nodes[0].Text = text;
+            }
+
             TreeNode node = _tree.TopNode;
             while (node != null)
             {
@@ -159,6 +169,17 @@ namespace LiteMonitor.src.UI
         {
             _tree.BeginUpdate();
             _tree.Nodes.Clear();
+
+            // 厂商 ACPI 风扇通道诊断节点（始终显示，不可用时给出原因）。
+            // EC 控风扇的笔记本在 LHM 硬件树里没有 Fan 传感器，这个节点用来确认
+            // BIOS 数据块是否可读、以及解析出的 RPM 是多少（可与厂商控制中心对照）。
+            _vendorNode = null;
+            var vendorFans = VendorFanReader.Instance;
+            var vendorNode = new TreeNode(T("Vendor fan channel (ACPI WMI)", "厂商风扇通道 (ACPI WMI)"));
+            vendorNode.Nodes.Add(new TreeNode(vendorFans.GetDiagnosticText()));
+            _tree.Nodes.Add(vendorNode);
+            vendorNode.Expand();
+            _vendorNode = vendorNode;
 
             var computer = HardwareMonitor.Instance?.ComputerInstance;
             if (computer == null || computer.Hardware.Count == 0) 

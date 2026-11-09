@@ -99,6 +99,10 @@ namespace LiteMonitor
             return UIUtils.GetStateColor(CachedColorState, t, true);
         }
 
+        /// <summary>风扇类监控项：没有有效传感器时以 "--" 代替误导性的 0。</summary>
+        private static bool IsFanLike(string key) =>
+            key == "CPU.Fan" || key == "GPU.Fan" || key == "CASE.Fan" || key == "CPU.Pump";
+
         public string GetFormattedText(bool isHorizontal)
         {
             // [Debug & Fix] 1. Always update color state for Plugin Items FIRST
@@ -148,6 +152,17 @@ namespace LiteMonitor
                 }
 
                 return TextValue;
+            }
+
+            // 3.5 风扇类监控项无有效读数时显示 "--"，不再伪装成 0 RPM。
+            //     Value 为 null = 厂商通道与 LHM 都没拿到传感器值；
+            //     显示 0 会让人误以为风扇停转，属于误导性兜底。
+            //     恢复出数时 DisplayValue 会从 0 跳到数百以上，文本缓存会自动重建。
+            if (!Value.HasValue && IsFanLike(Key))
+            {
+                CachedColorState = 0;
+                CachedPercent = 0;
+                return "--";
             }
 
             // 4. Numeric Value Processing (Hardware items)

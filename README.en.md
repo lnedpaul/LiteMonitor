@@ -199,8 +199,8 @@ The script:
 4. For the framework-dependent shape, also produces a ship zip containing only the exe
    (never `settings.json` or other user data).
 
-Default output: `dist\LiteMonitor-single\LiteMonitor.exe` (6,135,578 B / 5.85 MB) and
-`LiteMonitor-net10-win-x64.zip` (2,498,024 B / 2.38 MB).
+Default output: `dist\LiteMonitor-single\LiteMonitor.exe` (6,143,770 B / 5.86 MB) and
+`LiteMonitor-net10-win-x64.zip` (2,500,688 B / 2.38 MB).
 
 **Build toolchain**: a portable .NET 10 SDK `10.0.403` ships with the project in `_sdk10\`
 (git-ignored, so other projects cannot wipe it). The script uses `_sdk10\dotnet\dotnet.exe` by
@@ -212,10 +212,10 @@ If `_sdk10` is removed, re-download the official zip (no system install, no PATH
 
 Build checksums:
 
-- Framework-dependent exe SHA256 `FBFCB7B3D2B2097E8BE530A4C315A093DDC577F7E86FF0FDBBFFDA1D7474D282`
-- Ship zip SHA256 `4245B188224B4DD0E22CB39A393BCA8DBF34879D812CD58F4EFAE87A913977E5`
-- Embedded updater SHA256 `7ABEE20463286B9DAB395B658CFBE4C9E61745F964E5C36EFB6ED391CDFF7EE7`
-- Self-contained exe SHA256 `540563A56DEA7EDAB72D01F25ED6FEA744A65D319B23939B8CD3F07F877DC124` (86,031,023 B / 82.05 MB, republished in the same batch)
+- Framework-dependent exe SHA256 `DF2E8D27E67338579878C01AFE24EB14EA7BFFB6D05D5680EEFFDBD862158C1B`
+- Ship zip SHA256 `DB288D1B70163034EF490DC469C56335C609BB74E80A1549B40881DBCB6A27D7`
+- Embedded updater SHA256 `CF176E67A46503B07BA1FB2EC08B5BCBEB6EF84B861657CD59E583295A9E4744`
+- Self-contained exe SHA256 `77B63D938692FA36B209118492105DA05E574B1DE877D5588DD44E4439B08EDD` (86,031,023 B / 82.05 MB, republished in the same batch)
 
 > **Trade-off**: the framework-dependent build needs .NET 10 Desktop Runtime on the target
 > machine (this SDK ships 10.0.14); the self-contained build bundles the runtime and runs on
@@ -251,6 +251,23 @@ Build checksums:
 > being unable to unhide on multi-monitor setups, and system clock adjustments affecting the
 > keep-visible window; bottom-edge hiding is now supported too.
 > Regression tests: `test/自动隐藏状态机回归/` (55 assertions).
+>
+> **Laptop fan RPM (vendor ACPI channel)**: on notebooks whose fans are controlled by the EC
+> (for example the Xiaomi Mi Gaming Laptop 15.6 / TM1806), LibreHardwareMonitor enumerates no
+> `Fan` sensors at all. The app now probes the BIOS data block exposed through
+> `root\wmi:RW_TMAWMI` (`ACPI\PNP0C14\...`) and uses its real CPU / GPU RPM values for
+> `CPU.Fan` / `GPU.Fan`. If the block is unavailable it silently falls back to the original
+> LHM path, so behaviour on other machines is unchanged. The block requires elevation, which
+> the app already has via `requireAdministrator`; sampling happens on a background thread,
+> never blocks the UI, writes no EC registers, calls no vendor service API and does not depend
+> on the vendor control software running. "Right-click → System hardware details" now has a
+> "Vendor fan channel (ACPI WMI)" node showing the current RPM, the raw data block, or the
+> exact reason the channel is unavailable.
+> Two misleading behaviours were also fixed: `GPU.Fan` no longer treats `Control` (a 0–100%
+> duty cycle) as RPM, and a fan item with no sensor shows `--` instead of `0 RPM`.
+> The field layout was derived from two real-machine samples (balanced and full-speed modes)
+> cross-checked against the vendor tool: `[4..7]` = CPU fan, `[8..11]` = GPU fan, little-endian
+> uint32. Regression tests: `test/厂商风扇回归/` (46 assertions).
 >
 > Keep the exe in a **writable folder** (not `C:\Program Files`), same as the upstream build.
 > Run `build-net10.ps1` once after a clean clone. A plain `dotnet build` still produces the

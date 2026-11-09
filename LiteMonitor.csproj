@@ -27,6 +27,13 @@
     <!-- .NET 10 已内置 System.Text.Json 10.0.x；显式引用 9.0.10 会触发 NU1510 并可能降级程序集 -->
   </ItemGroup>
 
+    <!-- dist/ 下偶尔会放临时诊断工程（例如厂商 WMI 探测器），其 obj/*.cs 会被
+         SDK 默认的 **/*.cs 递归收编，导致 AssemblyInfo 特性重复、主项目编译失败。
+         发布产物目录永远不应参与编译。 -->
+    <ItemGroup>
+      <Compile Remove="dist/**/*.cs" />
+    </ItemGroup>
+
     <!-- ==================================================================
          资源处理分两种发布形态（由 build-net10.ps1 传入 PublishSingleFile 决定）：
 
