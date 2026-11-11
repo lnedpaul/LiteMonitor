@@ -10,5 +10,9 @@
   <ItemGroup>
     <!-- 直接编译仓库里的真实解析源码，避免测试的是复制品 -->
     <Compile Include="../../src/System/HardwareServices/TmaFanBuffer.cs" Link="TmaFanBuffer.cs" />
+    <Compile Include="../../src/System/HardwareServices/VendorFanFreshness.cs" Link="VendorFanFreshness.cs" />
+    <Compile Include="../../src/System/HardwareServices/FanSources/FanSourceContracts.cs" Link="FanSourceContracts.cs" />
+    <Compile Include="../../src/System/HardwareServices/FanSources/FanProfile.cs" Link="FanProfile.cs" />
+    <Compile Include="../../src/System/HardwareServices/FanSources/FanSourceSelector.cs" Link="FanSourceSelector.cs" />
   </ItemGroup>
 </Project>

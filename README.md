@@ -196,8 +196,8 @@ dotnet build -c Release
 3. 自检输出目录只剩一个 exe、确认资源没有被复制成外部文件、记录 SHA256，并清理中间目录；
 4. 框架依赖版额外产出只含 exe 的分发 zip（不会把 `settings.json` 等用户数据打进去）。
 
-默认产物：`dist\LiteMonitor-single\LiteMonitor.exe`（6,143,770 B / 5.86 MB）
-与 `LiteMonitor-net10-win-x64.zip`（2,500,688 B / 2.38 MB）。
+默认产物：`dist\LiteMonitor-single\LiteMonitor.exe`（6,160,154 B / 5.87 MB）
+与 `LiteMonitor-net10-win-x64.zip`（2,506,064 B / 2.39 MB）。
 
 **构建工具链**：.NET 10 SDK `10.0.403` 以便携版随项目放在 `_sdk10\`（已加入 `.gitignore`，
 不入库、不受其他项目清理影响）。脚本默认使用 `_sdk10\dotnet\dotnet.exe`，找不到才回退到 PATH
@@ -208,10 +208,14 @@ dotnet build -c Release
 
 本次构建的校验值：
 
-- 框架依赖版 exe SHA256 `DF2E8D27E67338579878C01AFE24EB14EA7BFFB6D05D5680EEFFDBD862158C1B`
-- 分发 zip SHA256 `DB288D1B70163034EF490DC469C56335C609BB74E80A1549B40881DBCB6A27D7`
-- 内嵌更新器 SHA256 `CF176E67A46503B07BA1FB2EC08B5BCBEB6EF84B861657CD59E583295A9E4744`
-- 自包含版 exe SHA256 `77B63D938692FA36B209118492105DA05E574B1DE877D5588DD44E4439B08EDD`（86,031,023 B / 82.05 MB，同批次重新发布）
+- 框架依赖版 exe SHA256 `8C8286846E5C4D67A27AC84CA59FE9A2F783CD7C544379594C8E7BDC8B1C045E`
+- 分发 zip SHA256 `9E9108B2A39978241D6BC500ED16D635B292CB86D25C341168C1C7366CE874D5`
+- 框架依赖包内嵌更新器 SHA256 `3F378C4C36BFB5E05D9C58B887C5236B074734D8EC5091D8EFBDDD191C019F84`
+- 自包含版 exe SHA256 `77BB5E7F316DF0F74270EDE34CFDE11A531854666652C8EB399BCE87107AD690`（86,035,119 B / 82.05 MB，同批次重新发布）
+- 自包含包内嵌更新器 SHA256 `F9E511AFEAE67838621074906BDDB59B60BFB3806EEC7A7A831AD027D7FD8D7C`
+
+> 更新器由每次构建现场发布，单文件 bundle 含构建标识，因此同一份源码多次发布的内嵌更新器
+> SHA256 会不同；`resources\LiteMonitor.Updater.exe` 只保留框架依赖形态（174,193 B）供下次构建覆盖。
 
 > **取舍**：框架依赖版要求目标机器装有 .NET 10 桌面运行时（本机 SDK 自带 10.0.14）；
 > 自包含版把运行时一起打进 exe，可拷到任意 Win10/11 x64，代价是约 82 MB。
@@ -245,18 +249,27 @@ dotnet build -c Release
 > 多屏下隐藏后唤不出、系统校时影响保护期等问题，并补上贴底边隐藏。
 > 回归测试见 `test/自动隐藏状态机回归/`（55 条断言）。
 >
-> **笔记本风扇转速（厂商 ACPI 通道）**：由 EC 控风扇的笔记本（如小米游戏本 TM1806）在
-> LibreHardwareMonitor 里枚举不到 `Fan` 传感器。程序现在会自动探测 BIOS 经
-> `root\wmi:RW_TMAWMI` 暴露的数据块（`ACPI\PNP0C14\...`），读出 CPU / GPU 风扇真实 RPM，
-> 优先用于 `CPU.Fan` / `GPU.Fan`；读不到时自动回退到原有 LHM 逻辑，其他机型行为不变。
-> 该数据块需要管理员权限，而本程序清单本来就 `requireAdministrator`；采集在后台线程进行，
-> 不阻塞界面，也不写入任何 EC 寄存器、不调用厂商服务接口，更不依赖厂商控制软件是否运行。
-> 「右键 → 系统硬件详情」新增「厂商风扇通道 (ACPI WMI)」节点，可看当前 RPM、原始数据块，
-> 或通道不可用的具体原因。
-> 同时修掉两处误导：`GPU.Fan` 不再把 `Control`（0–100% 占空比）当 RPM 显示；
-> 风扇项确实没有传感器时显示 `--`，不再是 0 RPM。
-> 字段布局由本机均衡 / 全速两组真机采样与厂商工具读数对照确定（数据块 `[4..7]`=CPU 风扇、
-> `[8..11]`=GPU 风扇，小端 uint32），回归测试见 `test/厂商风扇回归/`（46 条断言）。
+> **笔记本风扇转速（可回退的多源适配层）**：EC 控风扇的笔记本（如小米游戏本 TM1806）在
+> LibreHardwareMonitor 里枚举不到 `Fan` 传感器。现在由 `src/System/HardwareServices/FanSources/`
+> 统一管理风扇数据源：机型规则目录 `FanProfileCatalog` → 健康度选择器 `FanSourceSelector` →
+> 单例管理器 `FanSourceManager`，`IFanSource` 让各源可注册、可替换、可诊断。
+> 已验证机型（规则 `xiaomi-tm1806-ec`）以 **EC 直读为主源**：复用 LHM 0.9.6 自带的
+> `WindowsEmbeddedControllerIO`，每 2 秒只读 EC `0x00`–`0x03` 两个 16 位小端转速值；
+> 厂商 `root\wmi:RW_TMAWMI` 数据块退为**交叉校验与备用源**，兼做 CPU/GPU 左右顺序校准。
+> 全部源不可用时才回退 LHM 通用传感器；确实无读数时显示 `--`，不再是 0 RPM。
+> 小米游戏盒子最小化后前端心跳会停，`RW_TMAWMI` 数据块冻结在旧值；冻结检测（连续多帧
+> 原始字节不变）会摘掉它，选择器自动切到 EC，因此**风扇读数仍然实时**，不再依赖厂商控制软件
+> 保持前台。非目标机型连续确认无该 WMI 类后会彻底停掉后台轮询；数据块还必须满足 32 字节、
+> 固定零区、合理 RPM 区间才被接受，避免别的品牌凑巧给出「像 RPM」的数字而误报。
+> 「右键 → 系统硬件详情」的风扇诊断节点会显示机型、当前生效源与每个适配器的状态。
+> 顺带修掉两处误导：`GPU.Fan` 不再把 `Control`（0–100% 占空比）当 RPM；无传感器显示 `--`。
+> 采集全程只读、后台线程、不写 EC 寄存器、不调用厂商服务接口；程序清单本来就 `requireAdministrator`。
+> 回归测试见 `test/厂商风扇回归/`（127 条断言）。
+>
+> **「跨品牌」指架构可扩展，不是即插即用**：目前只有一条真机验证过的 EC 布局规则，
+> 别的品牌要接入需往规则目录补各自的寄存器布局或私有 WMI 适配器数据，程序不会猜测「通用 EC 偏移」。
+> 另外 CPU/GPU 左右顺序校准只在内存里做：若开机时厂商工具已最小化、WMI 冻结而无法校验，
+> 会沿用规则默认顺序（只影响标注方向，不影响数值实时性）。
 
 ---
 

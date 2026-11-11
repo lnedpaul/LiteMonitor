@@ -98,12 +98,16 @@ namespace LiteMonitor.src.UI
         {
             if (!this.Visible || _tree.IsDisposed) return;
 
-            // 厂商风扇通道是后台异步采集的，窗口刚打开时可能还没拿到第一帧；
-            // 每秒把诊断行刷新成最新状态（数据 / 不可用原因）。
-            if (_vendorNode?.TreeView == _tree && _vendorNode.Nodes.Count > 0)
+            // 风扇数据源是后台异步采集的，窗口刚打开时可能还没拿到第一帧；
+            // 每秒把所有适配器的诊断行刷新成最新状态（当前生效源 / 数据 / 不可用原因）。
+            if (_vendorNode?.TreeView == _tree)
             {
-                string text = VendorFanReader.Instance.GetDiagnosticText();
-                if (_vendorNode.Nodes[0].Text != text) _vendorNode.Nodes[0].Text = text;
+                string[] lines = FanSourceManager.Instance.GetDiagnosticLines();
+                while (_vendorNode.Nodes.Count < lines.Length) _vendorNode.Nodes.Add(new TreeNode(""));
+                while (_vendorNode.Nodes.Count > lines.Length)
+                    _vendorNode.Nodes.RemoveAt(_vendorNode.Nodes.Count - 1);
+                for (int i = 0; i < lines.Length; i++)
+                    if (_vendorNode.Nodes[i].Text != lines[i]) _vendorNode.Nodes[i].Text = lines[i];
             }
 
             TreeNode node = _tree.TopNode;
@@ -170,13 +174,13 @@ namespace LiteMonitor.src.UI
             _tree.BeginUpdate();
             _tree.Nodes.Clear();
 
-            // 厂商 ACPI 风扇通道诊断节点（始终显示，不可用时给出原因）。
+            // 风扇数据源诊断节点（始终显示，不可用时给出原因）。
             // EC 控风扇的笔记本在 LHM 硬件树里没有 Fan 传感器，这个节点用来确认
-            // BIOS 数据块是否可读、以及解析出的 RPM 是多少（可与厂商控制中心对照）。
+            // 当前命中的机型规则、生效的数据源以及各适配器的状态。
             _vendorNode = null;
-            var vendorFans = VendorFanReader.Instance;
-            var vendorNode = new TreeNode(T("Vendor fan channel (ACPI WMI)", "厂商风扇通道 (ACPI WMI)"));
-            vendorNode.Nodes.Add(new TreeNode(vendorFans.GetDiagnosticText()));
+            var vendorNode = new TreeNode(T("Fan data sources (EC / vendor)", "风扇数据源 (EC / 厂商通道)"));
+            foreach (string line in FanSourceManager.Instance.GetDiagnosticLines())
+                vendorNode.Nodes.Add(new TreeNode(line));
             _tree.Nodes.Add(vendorNode);
             vendorNode.Expand();
             _vendorNode = vendorNode;

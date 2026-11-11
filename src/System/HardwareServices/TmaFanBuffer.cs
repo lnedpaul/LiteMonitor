@@ -32,6 +32,9 @@ namespace LiteMonitor.src.SystemServices
         /// <summary>解析所需的最小长度（到 GPU 温度字段结束）。</summary>
         public const int RequiredLength = 20;
 
+        /// <summary>真机数据块固定长度；采集路径要求精确匹配，解析函数本身仍保持宽松。</summary>
+        public const int BlockLength = 32;
+
         /// <summary>低于此值视为底噪/无效；与上游 FanMapper 的 200 RPM 门槛一致。</summary>
         public const uint MinRpm = 200;
 
@@ -59,6 +62,47 @@ namespace LiteMonitor.src.SystemServices
         }
 
         public static bool IsPlausible(uint rpm) => rpm >= MinRpm && rpm <= MaxRpm;
+
+        /// <summary>
+        /// 严格形状校验：只让真正的小米 TM1806 数据块进入解析。
+        ///
+        /// 真机所有快照（均衡 / 全速 / 最小化冻结）都符合：
+        ///   [0..3]  全 0 保留区
+        ///   [4..7]  CPU RPM uint32LE，只用低 16 位
+        ///   [8..11] GPU RPM uint32LE，只用低 16 位
+        ///   [12..15] CPU 温度 uint32LE，只用最低 1 字节
+        ///   [16..19] GPU 温度 uint32LE，只用最低 1 字节
+        ///   [20..31] 全 0 填充区
+        ///
+        /// 其他品牌即使偶然存在同名 WMI 类、且 [4..11] 数值恰好落在 200..20000，
+        /// 也会因保留区/填充区/高位字节不为 0 而被挡住，避免显示一个假 RPM。
+        /// </summary>
+        public static bool IsValidVendorBlock(ReadOnlySpan<byte> data)
+        {
+            if (data.Length != BlockLength) return false;
+
+            for (int i = 0; i < CpuFanOffset; i++)
+                if (data[i] != 0) return false;
+
+            for (int i = RequiredLength; i < BlockLength; i++)
+                if (data[i] != 0) return false;
+
+            // RPM 字段只用低 16 位（真机全速约 6200 RPM，远小于 65536）
+            if (data[6] != 0 || data[7] != 0) return false;
+            if (data[10] != 0 || data[11] != 0) return false;
+
+            // 温度字段只用最低 1 字节
+            for (int i = CpuTempOffset + 1; i < GpuTempOffset; i++)
+                if (data[i] != 0) return false;
+            for (int i = GpuTempOffset + 1; i < RequiredLength; i++)
+                if (data[i] != 0) return false;
+
+            byte cpuTemp = data[CpuTempOffset];
+            byte gpuTemp = data[GpuTempOffset];
+            if (cpuTemp < 1 || cpuTemp > 125 || gpuTemp < 1 || gpuTemp > 125) return false;
+
+            return true;
+        }
 
         /// <summary>取数据块第 12/16 字节的 CPU/GPU 温度，仅用于诊断展示。</summary>
         public static bool TryParseTemps(ReadOnlySpan<byte> data, out uint cpuTemp, out uint gpuTemp)

@@ -199,8 +199,8 @@ The script:
 4. For the framework-dependent shape, also produces a ship zip containing only the exe
    (never `settings.json` or other user data).
 
-Default output: `dist\LiteMonitor-single\LiteMonitor.exe` (6,143,770 B / 5.86 MB) and
-`LiteMonitor-net10-win-x64.zip` (2,500,688 B / 2.38 MB).
+Default output: `dist\LiteMonitor-single\LiteMonitor.exe` (6,160,154 B / 5.87 MB) and
+`LiteMonitor-net10-win-x64.zip` (2,506,064 B / 2.39 MB).
 
 **Build toolchain**: a portable .NET 10 SDK `10.0.403` ships with the project in `_sdk10\`
 (git-ignored, so other projects cannot wipe it). The script uses `_sdk10\dotnet\dotnet.exe` by
@@ -212,10 +212,15 @@ If `_sdk10` is removed, re-download the official zip (no system install, no PATH
 
 Build checksums:
 
-- Framework-dependent exe SHA256 `DF2E8D27E67338579878C01AFE24EB14EA7BFFB6D05D5680EEFFDBD862158C1B`
-- Ship zip SHA256 `DB288D1B70163034EF490DC469C56335C609BB74E80A1549B40881DBCB6A27D7`
-- Embedded updater SHA256 `CF176E67A46503B07BA1FB2EC08B5BCBEB6EF84B861657CD59E583295A9E4744`
-- Self-contained exe SHA256 `77B63D938692FA36B209118492105DA05E574B1DE877D5588DD44E4439B08EDD` (86,031,023 B / 82.05 MB, republished in the same batch)
+- Framework-dependent exe SHA256 `8C8286846E5C4D67A27AC84CA59FE9A2F783CD7C544379594C8E7BDC8B1C045E`
+- Ship zip SHA256 `9E9108B2A39978241D6BC500ED16D635B292CB86D25C341168C1C7366CE874D5`
+- Embedded updater (framework-dependent) SHA256 `3F378C4C36BFB5E05D9C58B887C5236B074734D8EC5091D8EFBDDD191C019F84`
+- Self-contained exe SHA256 `77BB5E7F316DF0F74270EDE34CFDE11A531854666652C8EB399BCE87107AD690` (86,035,119 B / 82.05 MB, republished in the same batch)
+- Embedded updater (self-contained) SHA256 `F9E511AFEAE67838621074906BDDB59B60BFB3806EEC7A7A831AD027D7FD8D7C`
+
+> The updater is published fresh on every build and its single-file bundle carries a build id, so
+> its hash changes between publishes of identical sources. `resources\LiteMonitor.Updater.exe`
+> only keeps the framework-dependent shape (174,193 B) for the next build to overwrite.
 
 > **Trade-off**: the framework-dependent build needs .NET 10 Desktop Runtime on the target
 > machine (this SDK ships 10.0.14); the self-contained build bundles the runtime and runs on
@@ -252,22 +257,34 @@ Build checksums:
 > keep-visible window; bottom-edge hiding is now supported too.
 > Regression tests: `test/自动隐藏状态机回归/` (55 assertions).
 >
-> **Laptop fan RPM (vendor ACPI channel)**: on notebooks whose fans are controlled by the EC
-> (for example the Xiaomi Mi Gaming Laptop 15.6 / TM1806), LibreHardwareMonitor enumerates no
-> `Fan` sensors at all. The app now probes the BIOS data block exposed through
-> `root\wmi:RW_TMAWMI` (`ACPI\PNP0C14\...`) and uses its real CPU / GPU RPM values for
-> `CPU.Fan` / `GPU.Fan`. If the block is unavailable it silently falls back to the original
-> LHM path, so behaviour on other machines is unchanged. The block requires elevation, which
-> the app already has via `requireAdministrator`; sampling happens on a background thread,
-> never blocks the UI, writes no EC registers, calls no vendor service API and does not depend
-> on the vendor control software running. "Right-click → System hardware details" now has a
-> "Vendor fan channel (ACPI WMI)" node showing the current RPM, the raw data block, or the
-> exact reason the channel is unavailable.
-> Two misleading behaviours were also fixed: `GPU.Fan` no longer treats `Control` (a 0–100%
-> duty cycle) as RPM, and a fan item with no sensor shows `--` instead of `0 RPM`.
-> The field layout was derived from two real-machine samples (balanced and full-speed modes)
-> cross-checked against the vendor tool: `[4..7]` = CPU fan, `[8..11]` = GPU fan, little-endian
-> uint32. Regression tests: `test/厂商风扇回归/` (46 assertions).
+> **Laptop fan RPM (fallback-capable, multi-source adapter layer)**: notebooks with EC-controlled
+> fans (e.g. the Xiaomi Mi Gaming Laptop 15.6 / TM1806) expose no `Fan` sensors to
+> LibreHardwareMonitor. Fan sources now live in `src/System/HardwareServices/FanSources/`:
+> a per-machine rule catalogue (`FanProfileCatalog`), a health-based `FanSourceSelector`, a
+> singleton `FanSourceManager`, and an `IFanSource` contract that makes each source registrable,
+> replaceable and diagnosable. On the verified machine (rule `xiaomi-tm1806-ec`), **EC direct
+> read is the primary source**: it reuses LHM 0.9.6's `WindowsEmbeddedControllerIO` to read two
+> little-endian 16-bit tachometers from EC `0x00`–`0x03` every 2 seconds. The vendor
+> `root\wmi:RW_TMAWMI` block is now the **cross-check and fallback source**, also used to
+> calibrate which tachometer is CPU vs GPU. Only when every source is unavailable does the app
+> fall back to generic LHM sensors; a genuine no-reading state shows `--`, not `0 RPM`.
+> Minimising the Xiaomi control centre stops its front-end heartbeat and freezes the WMI block;
+> freshness detection (identical raw bytes across consecutive frames) drops that source and the
+> selector switches to EC, so **RPM stays live** without the vendor tool in the foreground.
+> On other machines the WMI poll is permanently disabled once the class is confirmed absent,
+> and a block is accepted only if it is 32 bytes with the expected zero regions and plausible
+> RPM values, so a same-shaped block on another brand cannot produce a bogus number.
+> "Right-click → System hardware details" reports the machine, active source and each
+> adapter's state. Also fixed: `GPU.Fan` no longer treats `Control` (0–100% duty cycle) as RPM,
+> and a fan item with no sensor shows `--`. Sampling is read-only, on a background thread,
+> writes no EC registers and calls no vendor service API; the app manifest already has
+> `requireAdministrator`. Regression tests: `test/厂商风扇回归/` (127 assertions).
+>
+> **"Multi-brand" means extensible architecture, not plug-and-play support**: only one
+> machine-verified EC layout rule ships today. Other brands need their own register layout or
+> private WMI adapter data added to the catalogue — the app never guesses a "universal EC offset".
+> CPU/GPU order calibration is in-memory only: if the vendor tool is already minimised at boot
+> (WMI frozen), the rule's default order is used, affecting only the labels, not live values.
 >
 > Keep the exe in a **writable folder** (not `C:\Program Files`), same as the upstream build.
 > Run `build-net10.ps1` once after a clean clone. A plain `dotnet build` still produces the

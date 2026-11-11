@@ -56,9 +56,10 @@ namespace LiteMonitor.src.SystemServices
             // 初始化子服务
             _componentProcessor = new ComponentProcessor(c, s, map);
 
-            // 启动厂商风扇通道的后台采集（惰性单例、非阻塞）。
-            // 非目标机型会在连续失败后自动降频，取值时自动回退到 LHM。
-            _ = VendorFanReader.Instance;
+            // 初始化风扇数据源管理器（惰性单例、非阻塞）：
+            // 机型探测 → 命中的 EC 适配器 + 厂商 WMI 适配器，未命中则只有 WMI 适配器并自行停表，
+            // 全部不可用时由下面的 LHM 通用传感器兜底。
+            _ = FanSourceManager.Instance;
         }
 
         // ★★★ [新增] 清空缓存并重新预热（当硬件重载或配置变更时调用） ★★★
@@ -223,9 +224,14 @@ namespace LiteMonitor.src.SystemServices
         // ===========================================================
         public float? GetStartupValue(string key)
         {
-            // 启动阶段也允许厂商风扇通道立即出数，避免先闪一下 "--" 再变正常。
-            var vendorRpm = VendorFanReader.Instance.GetRpm(key);
-            if (vendorRpm.HasValue) return vendorRpm;
+            // 风扇数据源按健康状态自动选择（EC → 厂商 WMI → LHM）。
+            var fanRpm = FanSourceManager.Instance.GetRpm(key);
+            if (fanRpm.HasValue) return fanRpm;
+
+            // 所有 EC/厂商源都不可用时，不从缓存把冻结的旧转速带回来。
+            if ((key == "CPU.Fan" || key == "GPU.Fan") &&
+                !FanSourceManager.Instance.HasLiveSource)
+                return null;
 
             if (_lastValidMap.TryGetValue(key, out float lastVal)) return lastVal;
 
@@ -278,6 +284,10 @@ namespace LiteMonitor.src.SystemServices
                     // 因为 _lastValidMap 仅在 GetValue 内部（即 UI 线程）写入，
                     // 而后台线程（UpdateAll/Reload）只读不写或完全不访问它，
                     // 所以此时读取是安全的（虽然没有锁，但没有并发写入）。
+                    // 例外：所有 EC/厂商数据源都不可用时，CPU/GPU 风扇不能从这里把旧转速带回来。
+                    if ((key == "CPU.Fan" || key == "GPU.Fan") &&
+                        !FanSourceManager.Instance.HasLiveSource)
+                        return null;
                     if (_lastValidMap.TryGetValue(key, out float lastVal)) return lastVal;
                     return null;
                 }
@@ -418,10 +428,10 @@ namespace LiteMonitor.src.SystemServices
                     case "CPU.Pump":
                     case "CASE.Fan":
                     case "GPU.Fan":
-                        // ① 厂商 ACPI WMI 通道优先：EC 控风扇的笔记本 LHM 枚举不到 Fan 传感器，
-                        //    但 BIOS 已经提供现成 RPM（见 TmaFanBuffer / VendorFanReader）。
-                        //    取不到时 result 为 null，下面的 LHM 分支与通用兜底照常工作。
-                        result = VendorFanReader.Instance.GetRpm(key);
+                        // ① 统一的适配层入口：按机型与健康状况自动在 EC / 厂商 WMI / LHM 之间选择。
+                        //    EC 源独立于厂商前端心跳，因此盒子最小化后仍能持续出数；
+                        //    所有适配器都不可用时 result 为 null，下面的 LHM 分支与通用兜底照常工作。
+                        result = FanSourceManager.Instance.GetRpm(key);
 
                         if (!result.HasValue && _manualSensorCache.TryGetValue(key, out var sFan))
                         {

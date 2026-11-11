@@ -13,10 +13,13 @@ namespace LiteMonitor.src.SystemServices
     ///
     /// 设计要点：
     ///  - 后台 Timer 定时采集并缓存，取值路径只读内存字段，绝不阻塞 UI 线程；
-    ///  - 非管理员 / 无此 WMI 类 / 数据异常时自动判定不可用并指数退避，主流程回退到 LHM；
-    ///  - 超过 10 秒没有成功采集即视为陈旧数据，不再对外提供，避免显示冻结的旧转速。
+    ///  - 只对真机验证过的 32 字节数据块形状放行，杜绝在其他品牌机型上误报假 RPM；
+    ///  - 本机不提供该 WMI 类时，连续失败达到阈值后永久停用采集；
+    ///  - 查询成功但数据块连续多帧不变（厂商控制中心最小化 / 停心跳）时判定冻结，
+    ///    不再对外提供旧转速，避免界面显示一个静止不动的数字；
+    ///  - 非管理员 / WMI 忙 / 数据异常时按可恢复错误处理并指数退避，主流程回退到 LHM。
     /// </summary>
-    internal sealed class VendorFanReader
+    internal sealed class VendorFanReader : IFanSource
     {
         private const string WmiScope = @"\\.\root\wmi";
         private const string WmiQuery = "SELECT * FROM RW_TMAWMI";
@@ -35,12 +38,14 @@ namespace LiteMonitor.src.SystemServices
 
         private readonly object _sync = new();
         private readonly System.Threading.Timer _timer;
+        private readonly VendorFanFreshness _freshness = new();
         private int _inRead;
         private int _failures;
 
         private float? _cpuRpm;
         private float? _gpuRpm;
         private bool _available;
+        private FanSourceStatus _status = FanSourceStatus.Waiting;
         private string _rawHex = "";
         private string _lastError = "";
         private DateTime _lastSuccessUtc = DateTime.MinValue;
@@ -52,7 +57,15 @@ namespace LiteMonitor.src.SystemServices
             _timer.Change(0, ActiveIntervalMs);
         }
 
+        // ---- IFanSource ----
+        public string Id => "vendor-wmi-rw-tmawmi";
+        public string DisplayName => "厂商 ACPI WMI 数据块 (RW_TMAWMI)";
+        public string DiagnosticText => GetDiagnosticText();
+        public FanRpmPair Reading { get { lock (_sync) return new FanRpmPair(_cpuRpm, _gpuRpm); } }
+
+        public FanSourceStatus Status { get { lock (_sync) return _status; } }
         public bool Available { get { lock (_sync) return _available; } }
+        public bool IsFrozen { get { lock (_sync) return _status == FanSourceStatus.Frozen; } }
         public string RawHex { get { lock (_sync) return _rawHex; } }
         public string LastError { get { lock (_sync) return _lastError; } }
         public bool HasError { get { lock (_sync) return !string.IsNullOrEmpty(_lastError); } }
@@ -61,12 +74,13 @@ namespace LiteMonitor.src.SystemServices
         /// <summary>
         /// 取指定监控项的转速。仅 CPU.Fan / GPU.Fan 走厂商通道，
         /// 其余项（水泵、机箱风扇）仍由 LHM 负责。
+        /// 冻结时返回 null，由上层直接显示 "--"，不能让旧值从 lastValidMap 兜底回来。
         /// </summary>
         public float? GetRpm(string key)
         {
             lock (_sync)
             {
-                if (!_available) return null;
+                if (_status != FanSourceStatus.Ok) return null;
                 if ((DateTime.UtcNow - _lastSuccessUtc).TotalSeconds > StaleSeconds) return null;
 
                 return key switch
@@ -78,23 +92,33 @@ namespace LiteMonitor.src.SystemServices
             }
         }
 
-        /// <summary>供「系统硬件详情」展示的诊断信息。</summary>
+        /// <summary>供「系统硬件详情」展示的诊断信息（每秒刷新）。</summary>
         public string GetDiagnosticText()
         {
             lock (_sync)
             {
-                if (!_available)
+                switch (_status)
                 {
-                    return string.IsNullOrEmpty(_lastError)
-                        ? "unavailable (no RW_TMAWMI data block)"
-                        : "unavailable: " + _lastError;
-                }
+                    case FanSourceStatus.Unsupported:
+                        return "此机型不提供 RW_TMAWMI 厂商数据块，已停用采集；风扇读数以通用传感器为准";
 
-                string cpu = _cpuRpm.HasValue ? $"{_cpuRpm.Value:0}" : "--";
-                string gpu = _gpuRpm.HasValue ? $"{_gpuRpm.Value:0}" : "--";
-                return $"CPU {cpu} RPM / GPU {gpu} RPM | {_rawHex}";
+                    case FanSourceStatus.Frozen:
+                        return $"数据块停止刷新（厂商控制中心可能已最小化），已暂停显示旧转速 | 冻结帧 CPU {Fmt(_cpuRpm)} / GPU {Fmt(_gpuRpm)} RPM";
+
+                    case FanSourceStatus.Error:
+                        string reason = _lastError.Length > 140 ? _lastError.Substring(0, 140) : _lastError;
+                        return "unavailable: " + reason;
+
+                    case FanSourceStatus.Ok:
+                        return $"CPU {Fmt(_cpuRpm)} RPM / GPU {Fmt(_gpuRpm)} RPM | {_rawHex}";
+
+                    default:
+                        return "waiting for the first RW_TMAWMI sample...";
+                }
             }
         }
+
+        private static string Fmt(float? value) => value.HasValue ? $"{value.Value:0}" : "--";
 
         private void OnTimer(object? state)
         {
@@ -102,6 +126,7 @@ namespace LiteMonitor.src.SystemServices
             if (Interlocked.Exchange(ref _inRead, 1) != 0) return;
             try
             {
+                if (Status == FanSourceStatus.Unsupported) return;
                 Refresh();
             }
             catch (Exception ex)
@@ -142,7 +167,7 @@ namespace LiteMonitor.src.SystemServices
                             continue;
 
                         byte[]? bytes = ToByteArray(mo["BufferBytes"]);
-                        if (bytes != null && bytes.Length >= TmaFanBuffer.RequiredLength)
+                        if (bytes != null && bytes.Length == TmaFanBuffer.BlockLength)
                         {
                             buffer = bytes;
                             break;
@@ -164,42 +189,62 @@ namespace LiteMonitor.src.SystemServices
                 return;
             }
 
+            // 严格形状校验：挡住「同名类但布局不同」的其他机型，避免显示假 RPM。
+            if (!TmaFanBuffer.IsValidVendorBlock(buffer))
+            {
+                MarkFailure("unexpected RW_TMAWMI data block shape");
+                return;
+            }
+
             if (!TmaFanBuffer.TryParse(buffer, out var cpu, out var gpu))
             {
                 MarkFailure("no plausible RPM field in data block");
                 return;
             }
 
+            string hex = TmaFanBuffer.ToHex(buffer);
+            bool frozen = _freshness.Observe(hex);
+
             lock (_sync)
             {
                 _cpuRpm = cpu;
                 _gpuRpm = gpu;
-                _rawHex = TmaFanBuffer.ToHex(buffer);
+                _rawHex = hex;
                 _available = true;
                 _lastError = "";
                 _lastSuccessUtc = DateTime.UtcNow;
+                _status = frozen ? FanSourceStatus.Frozen : FanSourceStatus.Ok;
             }
 
             Interlocked.Exchange(ref _failures, 0);
+            // 冻结期间仍保持 1 秒轮询，厂商控制中心恢复后能立刻解冻。
             _timer.Change(ActiveIntervalMs, ActiveIntervalMs);
         }
 
         private void MarkFailure(string error)
         {
+            int failures = Interlocked.Increment(ref _failures);
+            bool giveUp = failures >= FailureThreshold && VendorFanSupport.IsPermanentAbsence(error);
+
             lock (_sync)
             {
+                _freshness.Reset();
                 _available = false;
                 _cpuRpm = null;
                 _gpuRpm = null;
                 _lastError = error;
+                _status = giveUp ? FanSourceStatus.Unsupported : FanSourceStatus.Error;
             }
 
-            int failures = Interlocked.Increment(ref _failures);
-            if (failures >= FailureThreshold)
+            if (giveUp)
             {
-                // 连续失败后降频，避免每秒抛一次 ManagementException 拖慢系统。
-                _timer.Change(RetryIntervalMs, RetryIntervalMs);
+                // 本机根本没有这个 WMI 类：彻底停表，不再做注定失败的查询。
+                _timer.Change(Timeout.Infinite, Timeout.Infinite);
+                return;
             }
+
+            int interval = failures >= FailureThreshold ? RetryIntervalMs : ActiveIntervalMs;
+            _timer.Change(interval, interval);
         }
 
         /// <summary>WMI uint8 数组在不同运行时可能映射为 byte[] 或 Array，统一转换。</summary>
